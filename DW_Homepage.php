@@ -11,5 +11,7 @@
     <h1>FJDALSFJASL</h1>
     <p> fhasdjkhsda <p>
     <!-- DENZEl ANGELO F. DOROJA -->
+    <!-- adding another thingy to the file -->
+    <!-- this other thingy is inputted after pressing the stage changes plus sign button -->
 </body>
 </html>
