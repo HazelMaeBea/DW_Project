@@ -8,6 +8,6 @@
 <body>
     <!-- HEWOW -->
     <h1>Welcome to the homepage</h1>
-    <p> lorem </p>
+    <p> lorem ipsum churvalyn </p>
 </body>
 </html>
