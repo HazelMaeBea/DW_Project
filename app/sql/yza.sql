@@ -1,13 +1,4 @@
-TRUNCATE TABLE landing;
-TRUNCATE TABLE cleaned;
-TRUNCATE TABLE for_cleaning;
-TRUNCATE TABLE invalid;
-
-SELECT * FROM landing_table;
-SELECT * FROM cleaned;
-SELECT * FROM for_cleaning;
-SELECT * FROM invalid;
-
+-- TRUNCATE TABLE landing;
 CREATE TABLE IF NOT EXISTS landing_table (
     order_id VARCHAR(255),
     product VARCHAR(255),
@@ -16,7 +7,9 @@ CREATE TABLE IF NOT EXISTS landing_table (
     order_date VARCHAR(255),
     purchase_address VARCHAR(255)
 );
+-- SELECT * FROM landing_table;
 
+-- TRUNCATE TABLE cleaned;
 CREATE TABLE IF NOT EXISTS cleaned (
     order_id INT,
     product VARCHAR(255),
@@ -25,7 +18,9 @@ CREATE TABLE IF NOT EXISTS cleaned (
     order_date TIMESTAMP,
     purchase_address VARCHAR(255)
 );
+-- SELECT * FROM cleaned;
 
+-- TRUNCATE TABLE for_cleaning;
 CREATE TABLE IF NOT EXISTS for_cleaning (
     order_id VARCHAR(255),
     product VARCHAR(255),
@@ -34,7 +29,9 @@ CREATE TABLE IF NOT EXISTS for_cleaning (
     order_date VARCHAR(255),
     purchase_address VARCHAR(255)
 );
+-- SELECT * FROM for_cleaning;
 
+-- TRUNCATE TABLE invalid;
 CREATE TABLE IF NOT EXISTS invalid (
     order_id VARCHAR(255),
     product VARCHAR(255),
@@ -43,16 +40,13 @@ CREATE TABLE IF NOT EXISTS invalid (
     order_date VARCHAR(255),
     purchase_address VARCHAR(255)
 );
+-- SELECT * FROM invalid;
 
 -- Stored procedure for data mapping
 CREATE OR REPLACE PROCEDURE data_mapping()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    -- mapping logic
-    INSERT INTO for_cleaning
-    SELECT * FROM landing_table;
-    
     -- pag may null, invalid
     INSERT INTO invalid
     SELECT * FROM landing_table
@@ -139,43 +133,36 @@ BEGIN
     SET price_each = TO_CHAR(ROUND(CAST(price_each AS NUMERIC), 2), 'FM999999999.00')
     WHERE price_each ~ '^[0-9]+(\.[0-9]{1,2})?$';
 
-    -- Handle complete duplicates
-    INSERT INTO cleaned
-    SELECT DISTINCT ON (order_id, product, quantity_ordered, price_each, order_date, purchase_address)
-           order_id::INT,
-           product,
-           quantity_ordered::INT,
-           price_each::DECIMAL(10, 2),
-           TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date,
-           purchase_address
-    FROM for_cleaning;
-
-    INSERT INTO invalid
-    SELECT order_id::INT,
-           product,
-           quantity_ordered::INT,
-           price_each::DECIMAL(10, 2),
-           TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date,
-           purchase_address
-    FROM for_cleaning
-    EXCEPT
-    SELECT order_id::INT,
-           product,
-           quantity_ordered::INT,
-           price_each::DECIMAL(10, 2),
-           TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date,
-           purchase_address
-    FROM cleaned;
-
+    -- Find and remove duplicate rows
+    WITH duplicates AS (
+        SELECT
+            order_id,
+            product,
+            quantity_ordered,
+            price_each,
+            order_date,
+            purchase_address,
+            COUNT(*) AS cnt
+        FROM for_cleaning
+        GROUP BY
+            order_id,
+            product,
+            quantity_ordered,
+            price_each,
+            order_date,
+            purchase_address
+        HAVING COUNT(*) > 1
+    )
     DELETE FROM for_cleaning
     WHERE (order_id, product, quantity_ordered, price_each, order_date, purchase_address) IN (
         SELECT order_id, product, quantity_ordered, price_each, order_date, purchase_address
-        FROM cleaned
-        UNION
-        SELECT order_id, product, quantity_ordered, price_each, order_date, purchase_address
-        FROM invalid
+        FROM duplicates
     );
 
+    -- Insert duplicates into invalid table
+    INSERT INTO invalid
+    SELECT *
+    FROM duplicates;
 END;
 $$;
 
