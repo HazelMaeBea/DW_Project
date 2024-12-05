@@ -1,16 +1,44 @@
 TRUNCATE TABLE cleaned;
 TRUNCATE TABLE for_cleaning;
 TRUNCATE TABLE invalid;
+TRUNCATE TABLE cleaned_normalized;
 
 SELECT * FROM landing_table;
 SELECT * FROM cleaned;
 SELECT * FROM for_cleaning;
 SELECT * FROM invalid;
+SELECT * FROM cleaned_normalized;
+
+DROP TABLE cleaned_normalized
+
+-- Call the procedures
+CALL data_mapping();
+CALL data_cleansing();
+CALL normalize_data();
+CALL data_versioning();
+CALL product_dimension();
 
 --testing for duplicates, both complete and only ids
 SELECT * FROM for_cleaning
 WHERE order_id = '150925';
 
+-- checking for duplicates in cleaned table
+SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, purchase_address,
+			   CASE WHEN COUNT(*) > 1 THEN 'T'
+			   ELSE 'F' END
+		FROM cleaned
+		GROUP BY order_id, product, quantity_ordered, price_each, order_date, purchase_address
+		-- HAVING COUNT(*) > 1
+		ORDER BY order_id, product;
+
+-- checking for duplicates in cleaned_normalized table
+SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, street, city, state, zip_code,
+			   CASE WHEN COUNT(*) > 1 THEN 'T'
+			   ELSE 'F' END
+		FROM cleaned_normalized
+		GROUP BY order_id, product, quantity_ordered, price_each, order_date, street, city, state, zip_code
+		-- HAVING COUNT(*) > 1
+		ORDER BY order_id, product;
 
 -- Stored procedure for data mapping
 CREATE OR REPLACE PROCEDURE data_mapping()
@@ -246,36 +274,62 @@ BEGIN
         purchase_address
     FROM for_cleaning;
 
+    -- Trim data in the cleaned table
+    UPDATE cleaned
+    SET 
+        product = TRIM(BOTH FROM product),
+        purchase_address = TRIM(BOTH FROM purchase_address);
+
     -- Clean up
     TRUNCATE for_cleaning;
 END;
 $$;
 
 -- Normalization logic
-CREATE OR REPLACE FUNCTION normalize_data() RETURNS VOID AS 
+CREATE OR REPLACE PROCEDURE normalize_data()
 LANGUAGE plpgsql
-$$
+AS $$
 BEGIN
-    -- Example normalization logic
+    -- Create the cleaned_normalized table with appropriate data types
+    CREATE TABLE IF NOT EXISTS cleaned_normalized (
+        order_id INT,
+        product VARCHAR(255),
+        quantity_ordered INT,
+        price_each DECIMAL(10, 2),
+        order_date TIMESTAMP,
+        year INT,
+        month INT,
+        day INT,
+        hour INT,
+        minute INT,
+        street VARCHAR(255),
+        city VARCHAR(255),
+        state VARCHAR(255),
+        zip_code VARCHAR(255)
+    );
+
+    -- Insert data into cleaned_normalized
     INSERT INTO cleaned_normalized 
-        (order_id, product, quantity_ordered, price_each, order_date, month, day, year, hour, minute, number, street, city, state, zip_code)
+        (order_id, product, quantity_ordered, price_each, order_date, year, month, day, hour, minute, street, city, state, zip_code)
     SELECT 
         order_id, 
         product, 
         quantity_ordered, 
         price_each, 
         order_date, 
+        EXTRACT(YEAR FROM order_date) AS year, 
         EXTRACT(MONTH FROM order_date) AS month, 
         EXTRACT(DAY FROM order_date) AS day, 
-        EXTRACT(YEAR FROM order_date) AS year, 
         EXTRACT(HOUR FROM order_date) AS hour, 
         EXTRACT(MINUTE FROM order_date) AS minute, 
-        SPLIT_PART(purchase_address, ' ', 1) AS number, 
-        SPLIT_PART(purchase_address, ' ', 2) AS street, 
+        SPLIT_PART(purchase_address, ',', 1) AS street, 
         SPLIT_PART(purchase_address, ',', 2) AS city, 
-        SPLIT_PART(purchase_address, ',', 3) AS state, 
-        SPLIT_PART(purchase_address, ' ', 4) AS zip_code
+		SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 2) AS state,
+		SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
     FROM cleaned;
+
+    -- Truncate the cleaned table
+    TRUNCATE TABLE cleaned;
 END;
 $$;
 
@@ -389,7 +443,7 @@ BEGIN
 	WHERE product_id = target_product_id;
 
 	INSERT INTO product (
-		product_id, product_name, price_each, last_update_date, active_status, action_flag
+		product_id, product_name, new_price, last_update_date, active_status, action_flag
 	) 
 	
 	SELECT product_id, product_name, new_price, NOW(), 'Y', 'U'
@@ -479,18 +533,5 @@ END;
 $$;
 ---------------------------------------------------------------------------------------------------
 
--- Call the procedures
-CALL data_mapping();
-CALL data_cleansing();
-CALL normalize_data();
-CALL data_versioning();
--- CALL product_dimension();
 
--- checking for duplicates in cleaned table
-SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, purchase_address,
-			   CASE WHEN COUNT(*) > 1 THEN 'T'
-			   ELSE 'F' END
-		FROM cleaned
-		GROUP BY order_id, product, quantity_ordered, price_each, order_date, purchase_address
-		-- HAVING COUNT(*) > 1
-		ORDER BY order_id, product
+
