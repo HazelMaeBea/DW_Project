@@ -128,7 +128,7 @@ BEGIN
     CALL data_mapping();
     CALL data_cleansing();
     CALL normalize_data();
-    -- CALL product_dimension();
+    -- CALL create_product_dimension();
 END;
 $$;
 ---------------------------------------------------------------------------------------------------
@@ -687,7 +687,7 @@ BEGIN
             product,
             price_each,
             MIN(order_date) AS order_date
-        FROM cleaned
+        FROM cleaned_normalized
         GROUP BY product, price_each
         ORDER BY product, order_date
     );
