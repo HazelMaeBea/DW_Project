@@ -42,19 +42,18 @@ function submitForm(event) {
 	event.preventDefault();
 	const formData = new FormData();
 	selectedFiles.forEach((file) => formData.append("csv_files[]", file));
-	document.getElementById("loading-screen").style.display = "flex";
+	document.getElementById("loading-screen").style.display = "flex"; // Loading screen starts here
 	fetch("upload.php", {
 		method: "POST",
 		body: formData,
 	})
-		.then((response) => response.text())
-		.then((message) => {
-			document.getElementById("loading-screen").style.display = "none";
-			document.getElementById("confirmation-message").textContent =
-				message;
+		.then((response) => response.json()) // Parse the JSON response from the server
+		.then((data) => {
+			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on success
+			alert(data.message); // Display the response message in a popup
 		})
 		.catch((error) => {
-			document.getElementById("loading-screen").style.display = "none";
+			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on error
 			console.error("Error:", error);
 		});
 }

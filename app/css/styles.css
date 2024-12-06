@@ -95,6 +95,9 @@ button[type="submit"] {
 	padding: 20px;
 	border-radius: 8px;
 	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 }
 
 .spinner {

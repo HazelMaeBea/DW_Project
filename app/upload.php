@@ -18,13 +18,13 @@ try {
     // Test query to check connection
     $stmt = $pdo->query("SELECT 1");
     if ($stmt) {
-        echo "Database connection successful.<br>";
+        $responseMessage = "Database connection successful.";
     } else {
-        echo "Database connection failed.<br>";
+        $responseMessage = "Database connection failed.";
     }
 } catch (PDOException $e) {
     error_log("Database connection error: " . $e->getMessage(), 3, __DIR__ . '/error.log');
-    die("Could not connect to the database: " . $e->getMessage());
+    die(json_encode(['message' => "Could not connect to the database: " . $e->getMessage()]));
 }
 
 // Directory to save uploaded files
@@ -47,12 +47,12 @@ if (!empty($_FILES['csv_files']['name'][0])) {
             if (move_uploaded_file($tmpFilePath, $destination)) {
                 $filePaths[] = $destination; // Add file path to array
             } else {
-                echo "Failed to move file: $fileName";
+                die(json_encode(['message' => "Failed to move file: $fileName"]));
             }
         }
     }
 } else {
-    echo "No files uploaded.";
+    die(json_encode(['message' => "No files uploaded."]));
 }
 
 // Convert file paths to a comma-separated string
@@ -78,13 +78,25 @@ if (!empty($filePathsString)) {
         foreach ($logMessages as $message) {
             file_put_contents($logFile, $message . "\n", FILE_APPEND);
         }
+
+        // Check if data is loaded onto cleaned_normalized table
+        $stmt = $pdo->query("SELECT COUNT(*) FROM cleaned_normalized");
+        $rowCount = $stmt->fetchColumn();
+        if ($rowCount > 0) {
+            $responseMessage = "Data loaded onto cleaned_normalized table successfully.";
+        } else {
+            $responseMessage = "Data not loaded onto cleaned_normalized table.";
+        }
     } catch (PDOException $e) {
         error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
-        echo "Error executing stored procedure: " . $e->getMessage();
+        $responseMessage = "Error executing stored procedure: " . $e->getMessage();
     }
 } else {
-    echo "No files uploaded or paths are empty.";
+    $responseMessage = "No files uploaded or paths are empty.";
 }
+
+// Send response message as JSON
+echo json_encode(['message' => $responseMessage]);
 
 // Close the database connection
 $pdo = null;
