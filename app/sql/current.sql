@@ -52,6 +52,9 @@ DECLARE
 BEGIN
     RAISE NOTICE 'Starting data extraction...';
 
+    -- Clear all relevant tables only on initial data extraction
+    CALL clear_all_tables();
+
     -- Create landing_table if it doesn't exist
     CREATE TABLE IF NOT EXISTS landing_table (
         order_id VARCHAR(255),
@@ -85,6 +88,8 @@ BEGIN
         -- Drop the temporary table
         DROP TABLE temp_csv;
     END LOOP;
+
+	CALL call_all_procedures();
 
     RAISE NOTICE 'Data extraction completed.';
 END;
@@ -126,43 +131,6 @@ BEGIN
     -- CALL product_dimension();
 END;
 $$;
-
--- Trigger function to call clear_all_tables before insert on landing_table
-CREATE OR REPLACE FUNCTION before_insert_landing_table()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    CALL clear_all_tables();
-    RETURN NEW;
-END;
-$$;
-
--- Trigger to call the function before insert on landing_table
-DROP TRIGGER IF EXISTS before_insert_landing_table_trigger ON landing_table;
-CREATE TRIGGER before_insert_landing_table_trigger
-BEFORE INSERT ON landing_table
-FOR EACH STATEMENT
-EXECUTE FUNCTION before_insert_landing_table();
-
--- Trigger function to call call_all_procedures after insert on landing_table
-CREATE OR REPLACE FUNCTION after_insert_landing_table()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    CALL call_all_procedures();
-    RETURN NEW;
-END;
-$$;
-
--- Trigger to call the function after insert on landing_table
-DROP TRIGGER IF EXISTS after_insert_landing_table_trigger ON landing_table;
-CREATE TRIGGER after_insert_landing_table_trigger
-AFTER INSERT ON landing_table
-FOR EACH STATEMENT
-EXECUTE FUNCTION after_insert_landing_table();
-
 ---------------------------------------------------------------------------------------------------
 
 -- Stored procedure for data mapping
