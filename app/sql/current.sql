@@ -416,43 +416,44 @@ BEGIN
     RAISE NOTICE 'Starting data normalization...';
 
     -- Create the cleaned_normalized table with appropriate data types
+	DROP TABLE cleaned_normalized;
     CREATE TABLE IF NOT EXISTS cleaned_normalized (
-        order_id INT,
-        product VARCHAR(255),
-        quantity_ordered INT,
-        price_each DECIMAL(10, 2),
-        order_date TIMESTAMP,
-        year INT,
-        month INT,
-        day INT,
-        hour INT,
-        minute INT,
-        street VARCHAR(255),
-        city VARCHAR(255),
-        state VARCHAR(255),
-        zip_code VARCHAR(255)
+        order_id INT, 
+        product VARCHAR, 
+        quantity_ordered INT, 
+        price_each NUMERIC, 
+        order_date TIMESTAMP, 
+        month VARCHAR, 
+        day VARCHAR, 
+        year VARCHAR,
+		halfyear VARCHAR,
+		quarter VARCHAR, 
+        street VARCHAR, 
+        city VARCHAR, 
+        state VARCHAR, 
+        zip_code VARCHAR
     );
 
     RAISE NOTICE 'cleaned_normalized table created or verified.';
 
     -- Insert data into cleaned_normalized
     INSERT INTO cleaned_normalized 
-        (order_id, product, quantity_ordered, price_each, order_date, year, month, day, hour, minute, street, city, state, zip_code)
+        (order_id, product, quantity_ordered, price_each, order_date, month, day, year, halfyear, quarter, street, city, state, zip_code)
     SELECT 
         order_id, 
         product, 
         quantity_ordered, 
         price_each, 
         order_date, 
-        EXTRACT(YEAR FROM order_date) AS year, 
-        EXTRACT(MONTH FROM order_date) AS month, 
-        EXTRACT(DAY FROM order_date) AS day, 
-        EXTRACT(HOUR FROM order_date) AS hour, 
-        EXTRACT(MINUTE FROM order_date) AS minute, 
+        to_char(EXTRACT(MONTH FROM order_date), 'FM00') AS month, 
+        to_char(EXTRACT(DAY FROM order_date), 'FM00') AS day, 
+        to_char(EXTRACT(YEAR FROM order_date), 'FM0000') AS year,
+		to_char(CEIL(EXTRACT(MONTH FROM order_date)/6), 'FM00') as halfyear,
+		to_char(EXTRACT(QUARTER FROM order_date), 'FM00') AS quarter,
         SPLIT_PART(purchase_address, ',', 1) AS street, 
         SPLIT_PART(purchase_address, ',', 2) AS city, 
-		SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 2) AS state,
-		SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
+        SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 2) AS state, 
+        SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
     FROM cleaned;
 
     RAISE NOTICE 'Data inserted into cleaned_normalized.';
@@ -762,6 +763,13 @@ $$;
 
 ---------------------------------------------------------------------------------------------------------------
 -- Place code for creating time_dimension table here
+	CREATE TABLE IF NOT EXISTS time_dimension 
+	(
+		time_id varchar,
+		time_desc varchar,
+		time_level int,
+		parent_id varchar
+	);
 
 -- Place code for creating product_dimension table here
     CREATE TABLE IF NOT EXISTS product_dimension
