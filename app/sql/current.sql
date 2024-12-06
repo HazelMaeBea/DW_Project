@@ -666,7 +666,7 @@ BEGIN
 			product_name,
 			price_each,
 			order_date
-		FROM cleaned --THIS IS FROM THE DATA NORMALIZATION AND CLEANSING 
+		FROM cleaned_normalized --THIS IS FROM THE DATA NORMALIZATION AND CLEANSING 
 	);
 
 	CALL data_versioning();
