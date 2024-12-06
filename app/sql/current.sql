@@ -16,8 +16,8 @@ DROP TABLE cleaned_normalized
 CALL data_mapping();
 CALL data_cleansing();
 CALL normalize_data();
-CALL data_versioning();
-CALL product_dimension();
+--CALL data_versioning(); --> No need to call this as when product_dimension is called it will call populate_product_dimension() for data versioning
+CALL create_product_dimension();
 
 --testing for duplicates, both complete and only ids
 SELECT * FROM for_cleaning
@@ -482,134 +482,426 @@ $$;
 ---------------------------------------------------------------------------------------------------
 
 -- Stored procedure for data versioning (old)
-CREATE OR REPLACE PROCEDURE data_versioning()
+-- CREATE OR REPLACE PROCEDURE data_versioning()
+-- LANGUAGE plpgsql
+-- AS $$
+-- DECLARE
+--     rec RECORD; --iterate all products
+--     existing_id VARCHAR;
+-- BEGIN
+-- 	CREATE TABLE IF NOT EXISTS product (
+-- 	    product_id VARCHAR(255),
+-- 	    product_name VARCHAR(255) NOT NULL,
+-- 	    price_each NUMERIC(10, 2) NOT NULL,
+-- 	    last_update_date TIMESTAMP NOT NULL,
+-- 	    active_status CHAR(1) NOT NULL,
+-- 	    action_flag CHAR(1) NOT NULL,
+-- 		PRIMARY KEY (product_id, last_update_date)
+-- 		);
+
+	
+--     FOR rec IN
+--         SELECT * FROM all_products ORDER BY order_date
+--     LOOP
+--         --check if is alr in product
+--         SELECT product_id INTO existing_id
+--         FROM product
+--         WHERE product_name = rec.product_name
+--           AND active_status = 'Y'; --check only active rec
+
+--         IF existing_id IS NULL THEN
+--             --insert if not in product table
+--             INSERT INTO product (
+--                 product_id, product_name, price_each, last_update_date, active_status, action_flag
+--             )
+--             VALUES (
+--                 'P' || nextval('product_id_sequence'),
+--                 rec.product_name,
+--                 rec.price_each,
+--                 rec.order_date,
+--                 'Y',
+--                 'I'
+--             );
+--         ELSE
+--             --if prod exists, check if price_each is diff
+--             IF EXISTS (
+--                 SELECT 1
+--                 FROM product
+--                 WHERE product_name = rec.product_name
+--                   AND price_each = rec.price_each
+--                   AND active_status = 'Y'
+--             ) THEN
+--                 --skip if price is same
+--                 CONTINUE;
+--             END IF;
+
+--             --if price is diff, change to inactive
+--             UPDATE product
+--             SET active_status = 'N'
+--             WHERE product_id = existing_id;
+
+--             --then insert the new version of the product w updated price
+--             INSERT INTO product (
+--                 product_id, product_name, price_each, last_update_date, active_status, action_flag
+--             )
+--             VALUES (
+--                 'P' || nextval('product_id_sequence'),
+--                 rec.product_name,
+--                 rec.price_each,
+--                 rec.order_date,
+--                 'Y',
+--                 'U'
+--             );
+--         END IF;
+--     END LOOP;
+-- END;
+-- $$;
+
+-- Stored procedure for data versioning (new)
+CREATE OR REPLACE PROCEDURE populate_product_dimension()
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    rec RECORD; --iterate all products
-    existing_id VARCHAR;
+	p_record RECORD;
+	next_pk_id INTEGER := 1;
+	next_pid_id INTEGER := 1;
 BEGIN
-	CREATE TABLE IF NOT EXISTS product (
-	    product_id VARCHAR(255),
-	    product_name VARCHAR(255) NOT NULL,
-	    price_each NUMERIC(10, 2) NOT NULL,
-	    last_update_date TIMESTAMP NOT NULL,
-	    active_status CHAR(1) NOT NULL,
-	    action_flag CHAR(1) NOT NULL,
-		PRIMARY KEY (product_id, last_update_date)
-		);
-
-	
-    FOR rec IN
-        SELECT * FROM all_products ORDER BY order_date
-    LOOP
-        --check if is alr in product
-        SELECT product_id INTO existing_id
+    FOR p_record IN
+    (
+        SELECT *
         FROM product
-        WHERE product_name = rec.product_name
-          AND active_status = 'Y'; --check only active rec
-
-        IF existing_id IS NULL THEN
-            --insert if not in product table
-            INSERT INTO product (
-                product_id, product_name, price_each, last_update_date, active_status, action_flag
+    )
+    LOOP
+        --Checks if product exists
+        IF NOT EXISTS
+        (
+            SELECT 1
+            FROM product_dimension
+            WHERE product_name = p_record.product
+            AND active_status = 'Y'
+        )
+        THEN
+            INSERT INTO product_dimension
+            (
+		product_key,
+                product_id,
+                product_name,
+                price_each,
+                last_update_date,
+                active_status,
+                action_flag
             )
-            VALUES (
-                'P' || nextval('product_id_sequence'),
-                rec.product_name,
-                rec.price_each,
-                rec.order_date,
+            VALUES
+            (
+		'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+                'PID_' || LPAD(next_pid_id::TEXT, 4, '0'),
+                p_record.product,
+                p_record.price_each,
+                p_record.order_date,
                 'Y',
                 'I'
             );
+
+		next_pk_id := next_pk_id + 1;
+		next_pid_id := next_pid_id + 1;
+
         ELSE
-            --if prod exists, check if price_each is diff
-            IF EXISTS (
+            IF EXISTS
+            (
                 SELECT 1
-                FROM product
-                WHERE product_name = rec.product_name
-                  AND price_each = rec.price_each
-                  AND active_status = 'Y'
-            ) THEN
-                --skip if price is same
-                CONTINUE;
-            END IF;
-
-            --if price is diff, change to inactive
-            UPDATE product
-            SET active_status = 'N'
-            WHERE product_id = existing_id;
-
-            --then insert the new version of the product w updated price
-            INSERT INTO product (
-                product_id, product_name, price_each, last_update_date, active_status, action_flag
+                FROM product_dimension
+                WHERE product_name = p_record.product
+                AND active_status = 'Y'
+                AND price_each != p_record.price_each
             )
-            VALUES (
-                'P' || nextval('product_id_sequence'),
-                rec.product_name,
-                rec.price_each,
-                rec.order_date,
-                'Y',
-                'U'
-            );
+            THEN
+                UPDATE product_dimension
+                SET active_status = 'N'
+                WHERE product_name = p_record.product
+                AND active_status = 'Y';
+
+                INSERT INTO product_dimension
+                (
+			product_key,
+			product_id,
+			product_name,
+			price_each,
+			last_update_date,
+			active_status,
+			action_flag
+                )
+                SELECT 
+                    'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+                    pd.product_id,
+                    p_record.product,
+                    p_record.price_each,
+                    p_record.order_date,
+                    'Y',
+                    'U'
+                FROM product_dimension pd
+                WHERE pd.product_name = p_record.product
+                AND pd.active_status = 'N'
+                LIMIT 1;
+
+                next_pk_id := next_pk_id + 1;
+            END IF;
         END IF;
     END LOOP;
 END;
 $$;
-
 ---------------------------------------------------------------------------------------------------------------
+-- Stored procedure for product dimension(old)
+-- CREATE OR REPLACE PROCEDURE product_dimension()
+-- AS $$
+-- BEGIN
+--     CREATE TABLE IF NOT EXISTS all_products (
+-- 	    product_name VARCHAR(255) NOT NULL,
+-- 	    price_each NUMERIC(10, 2) NOT NULL,
+-- 	    order_date TIMESTAMP NOT NULL
+--     );
 
-CREATE OR REPLACE PROCEDURE product_dimension()
+--     INSERT INTO all_products (product_name, price_each, order_date)
+-- 	(
+-- 		SELECT 
+-- 			product_name,
+-- 			price_each,
+-- 			order_date
+-- 		FROM cleaned_normalized --THIS IS FROM THE DATA NORMALIZATION AND CLEANSING 
+-- 	);
+
+-- 	CALL data_versioning();
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- Stored procedure for product dimension(new)
+CREATE OR REPLACE PROCEDURE create_product_dimension()
+LANGUAGE plpgsql
 AS $$
 BEGIN
-    CREATE TABLE IF NOT EXISTS all_products (
-	    product_name VARCHAR(255) NOT NULL,
-	    price_each NUMERIC(10, 2) NOT NULL,
-	    order_date TIMESTAMP NOT NULL
+    --Safety measure ko ito
+    DROP TABLE IF EXISTS product;
+
+    CREATE TABLE product AS
+    (
+        SELECT DISTINCT
+            product,
+            price_each,
+            MIN(order_date) AS order_date
+        FROM cleaned
+        GROUP BY product, price_each
+        ORDER BY product, order_date
     );
 
-    INSERT INTO all_products (product_name, price_each, order_date)
-	(
-		SELECT 
-			product_name,
-			price_each,
-			order_date
-		FROM cleaned --THIS IS FROM THE DATA NORMALIZATION AND CLEANSING 
-	);
+    CREATE TABLE IF NOT EXISTS product_dimension
+    (
+	product_key VARCHAR(10),
+        product_id VARCHAR(10),
+        product_name VARCHAR(100),
+        price_each DECIMAL(10,2),
+        last_update_date TIMESTAMP,
+        active_status CHAR(1),
+        action_flag CHAR(1),
+        PRIMARY KEY(product_key)
+    );
 
-	CALL data_versioning();
+    --handles the data versioning of the products
+    CALL populate_product_dimension();
+END;
+$$;
+
+---------------------------------------------------------------------------------------------------------------
+--Function to change the product price (old)
+-- CREATE OR REPLACE FUNCTION change_price(target_product_id VARCHAR, new_price NUMERIC)
+-- RETURNS VOID
+-- LANGUAGE plpgsql
+-- AS 
+-- $$
+-- BEGIN
+-- 	UPDATE product
+-- 	SET active_status = 'N'
+-- 	WHERE product_id = target_product_id;
+
+-- 	INSERT INTO product (
+-- 		product_id, product_name, new_price, last_update_date, active_status, action_flag
+-- 	) 
+	
+-- 	SELECT product_id, product_name, new_price, NOW(), 'Y', 'U'
+-- 	  FROM product
+-- 	 WHERE product_id = target_product_id 
+-- 	 LIMIT 1;
+-- END
+-- $$;
+
+-- CREATE SEQUENCE product_id_sequence
+-- START 1
+-- INCREMENT BY 1;
+
+--Function to change the product price (new)
+/*Note: The function here will not work if product dimension doesn't exist yet so you will have to run the etl once in order to 
+store this in the postgresql.*/
+CREATE OR REPLACE FUNCTION handle_product_price_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    next_id INTEGER;
+BEGIN
+    IF (TG_OP = 'UPDATE') AND (OLD.active_status = 'Y') AND (OLD.price_each != NEW.price_each) THEN
+        -- Get the next ID
+        SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
+        INTO next_id 
+        FROM product_dimension;
+
+        -- First deactivate the old record
+        UPDATE product_dimension 
+        SET active_status = 'N'
+        WHERE product_key = OLD.product_key
+        AND active_status = 'Y';
+
+        -- Then insert new record
+        INSERT INTO product_dimension 
+        (
+            product_key,
+            product_id,
+            product_name,
+            price_each,
+            last_update_date,
+            active_status,
+            action_flag
+        ) VALUES 
+        (
+            'PK_' || LPAD(next_id::TEXT, 4, '0'),
+            OLD.product_id,
+            NEW.product_name,
+            NEW.price_each,
+            TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS'),
+            'Y',
+            'U'
+        );
+        
+        RETURN NULL;  -- This prevents the original UPDATE from happening
+    END IF;
+    
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
+-- Create the trigger that only fires for price changes
+CREATE TRIGGER tr_handle_product_price_change
+BEFORE UPDATE OF price_each
+ON product_dimension
+FOR EACH ROW
+EXECUTE FUNCTION handle_product_price_change();
 
-CREATE OR REPLACE FUNCTION change_price(target_product_id VARCHAR, new_price NUMERIC)
+-- Price change function remains the same
+CREATE OR REPLACE FUNCTION change_product_price
+(
+    in p_product_name VARCHAR,
+    in p_price_each DECIMAL
+)
 RETURNS VOID
 LANGUAGE plpgsql
-AS 
-$$
+AS $$
 BEGIN
-	UPDATE product
-	SET active_status = 'N'
-	WHERE product_id = target_product_id;
-
-	INSERT INTO product (
-		product_id, product_name, new_price, last_update_date, active_status, action_flag
-	) 
-	
-	SELECT product_id, product_name, new_price, NOW(), 'Y', 'U'
-	  FROM product
-	 WHERE product_id = target_product_id 
-	 LIMIT 1;
-END
+    IF NOT EXISTS (
+        SELECT 1
+        FROM product_dimension
+        WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
+        AND active_status = 'Y'
+    ) THEN
+        RAISE EXCEPTION 'Product % not found!', p_product_name;
+    ELSE
+        UPDATE product_dimension
+        SET price_each = p_price_each
+        WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
+        AND active_status = 'Y';
+    END IF;
+END;
 $$;
 
-CREATE SEQUENCE product_id_sequence
-START 1
-INCREMENT BY 1;
+---------------------------------------------------------------------------------------------------------------
+--Function to insert a new product
+/*Note: The function here will not work if product dimension doesn't exist yet so you will have to run the etl once in order to 
+store this in the postgresql.*/
+CREATE OR REPLACE FUNCTION handle_product_insert()
+RETURNS TRIGGER AS $$
+DECLARE
+    next_pk_id INTEGER;
+    next_pid_id INTEGER;
+BEGIN
+    -- Get the next PK_ and PID_ numbers
+    SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
+    INTO next_pk_id 
+    FROM product_dimension;
+    
+    SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
+    INTO next_pid_id 
+    FROM product_dimension;
 
+    -- Set the values in NEW
+    NEW.product_key := 'PK_' || LPAD(next_pk_id::TEXT, 4, '0');
+    NEW.product_id := 'PID_' || LPAD(next_pid_id::TEXT, 4, '0');
+    NEW.last_update_date := TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS');
+    NEW.active_status := 'Y';
+    NEW.action_flag := 'I';
+    
+    RETURN NEW;  -- Allow the modified INSERT to proceed
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger
+CREATE TRIGGER tr_handle_product_insert
+BEFORE INSERT
+ON product_dimension
+FOR EACH ROW
+EXECUTE FUNCTION handle_product_insert();
+
+-- Update the insert function to include all required fields
+CREATE OR REPLACE FUNCTION insert_new_product
+(
+    in p_product_name VARCHAR,
+    in p_price_each DECIMAL
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Check if product already exists
+    IF EXISTS (
+        SELECT 1
+        FROM product_dimension
+        WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
+        AND active_status = 'Y'
+    ) THEN
+        RAISE EXCEPTION 'Product % already exists!', p_product_name;
+    ELSE
+        INSERT INTO product_dimension 
+        (
+            product_name,
+            price_each
+        ) 
+        VALUES 
+        (
+            INITCAP(TRIM(p_product_name)),
+            p_price_each
+        );
+    END IF;
+END;
+$$;
+
+---------------------------------------------------------------------------------------------------------------
 -- Place code for creating time_dimension table here
 
 -- Place code for creating product_dimension table here
+    CREATE TABLE IF NOT EXISTS product_dimension
+    (
+	product_key VARCHAR(10),
+        product_id VARCHAR(10),
+        product_name VARCHAR(100),
+        price_each DECIMAL(10,2),
+        last_update_date TIMESTAMP,
+        active_status CHAR(1),
+        action_flag CHAR(1),
+        PRIMARY KEY(product_key)
+    );
 
 -- Place code for creating location_dimension table here
 
