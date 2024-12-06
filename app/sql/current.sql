@@ -1,13 +1,3 @@
--- Create landing_table if it doesn't exist
-CREATE TABLE IF NOT EXISTS landing_table (
-    order_id VARCHAR(255),
-    product VARCHAR(255),
-    quantity_ordered VARCHAR(255),
-    price_each VARCHAR(255),
-    order_date VARCHAR(255),
-    purchase_address VARCHAR(255)
-);
-
 TRUNCATE TABLE cleaned;
 TRUNCATE TABLE for_cleaning;
 TRUNCATE TABLE invalid;
@@ -50,6 +40,82 @@ SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, st
 		GROUP BY order_id, product, quantity_ordered, price_each, order_date, street, city, state, zip_code
 		-- HAVING COUNT(*) > 1
 		ORDER BY order_id, product;
+
+----------------------------------------------------------------------------------------------------------------------
+
+-- Procedure to handle data extraction from uploaded files
+CREATE OR REPLACE PROCEDURE data_extraction(file_paths TEXT)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    file_path TEXT;
+BEGIN
+    RAISE NOTICE 'Starting data extraction...';
+
+    -- Create landing_table if it doesn't exist
+    CREATE TABLE IF NOT EXISTS landing_table (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+    );
+
+    -- Clear the landing_table before inserting new data
+    DELETE FROM landing_table;
+
+    -- Split the file paths into an array
+    FOR file_path IN SELECT unnest(string_to_array(file_paths, ',')) LOOP
+        -- Create a temporary table to hold the CSV data
+        CREATE TEMP TABLE temp_csv (
+            order_id VARCHAR(255),
+            product VARCHAR(255),
+            quantity_ordered VARCHAR(255),
+            price_each VARCHAR(255),
+            order_date VARCHAR(255),
+            purchase_address VARCHAR(255)
+        );
+
+        -- Copy data from the CSV file into the temporary table
+        EXECUTE format('COPY temp_csv FROM %L WITH CSV HEADER', file_path);
+
+        -- Insert data from the temporary table into the landing_table
+        INSERT INTO landing_table (order_id, product, quantity_ordered, price_each, order_date, purchase_address)
+        SELECT order_id, product, quantity_ordered, price_each, order_date, purchase_address
+        FROM temp_csv;
+
+        -- Drop the temporary table
+        DROP TABLE temp_csv;
+    END LOOP;
+
+    RAISE NOTICE 'Data extraction completed.';
+END;
+$$;
+
+-- Trigger function to run procedures after insert on landing_table
+CREATE OR REPLACE FUNCTION after_insert_landing_table()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Ensure all relevant tables are empty
+    CALL truncate_all_tables();
+    
+    -- Call the procedures
+    CALL data_mapping();
+    CALL data_cleansing();
+    CALL normalize_data();
+    RETURN NEW;
+END;
+$$;
+
+-- Trigger to call the function after insert on landing_table
+DROP TRIGGER IF EXISTS after_insert_landing_table_trigger ON landing_table;
+CREATE TRIGGER after_insert_landing_table_trigger
+AFTER INSERT ON landing_table
+FOR EACH STATEMENT
+EXECUTE FUNCTION after_insert_landing_table();
 
 -- Stored procedure for data mapping
 CREATE OR REPLACE PROCEDURE data_mapping()
@@ -390,36 +456,13 @@ CREATE OR REPLACE PROCEDURE truncate_all_tables()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    TRUNCATE TABLE landing_table;
-    TRUNCATE TABLE cleaned;
-    TRUNCATE TABLE for_cleaning;
-    TRUNCATE TABLE invalid;
-    TRUNCATE TABLE cleaned_normalized;
+    DELETE FROM landing_table;
+    DELETE FROM cleaned;
+    DELETE FROM for_cleaning;
+    DELETE FROM invalid;
+    DELETE FROM cleaned_normalized;
 END;
 $$;
-
--- Trigger function to run procedures after insert on landing_table
-CREATE OR REPLACE FUNCTION after_insert_landing_table()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- Ensure all relevant tables are empty
-    CALL truncate_all_tables();
-    
-    -- Call the procedures
-    CALL data_mapping();
-    CALL data_cleansing();
-    CALL normalize_data();
-    RETURN NEW;
-END;
-$$;
-
--- Trigger to call the function after insert on landing_table
-CREATE TRIGGER after_insert_landing_table_trigger
-AFTER INSERT ON landing_table
-FOR EACH STATEMENT
-EXECUTE FUNCTION after_insert_landing_table();
 
 ---------------------------------------------------------------------------------------------------
 
@@ -499,6 +542,8 @@ BEGIN
 END;
 $$;
 
+---------------------------------------------------------------------------------------------------------------
+
 CREATE OR REPLACE PROCEDURE product_dimension()
 AS $$
 BEGIN
@@ -546,7 +591,6 @@ $$;
 CREATE SEQUENCE product_id_sequence
 START 1
 INCREMENT BY 1;
-
 
 -- Place code for creating time_dimension table here
 

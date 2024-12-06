@@ -40,7 +40,6 @@ function submitForm(event) {
 	selectedFiles.forEach((file) => formData.append("csv_files[]", file));
 	document.getElementById("loading-screen").style.display = "flex";
 	fetch("upload.php", {
-		// Reverted to point to upload.php
 		method: "POST",
 		body: formData,
 	})

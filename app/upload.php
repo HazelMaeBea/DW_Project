@@ -5,11 +5,25 @@ $dbname = "dw_project";
 $user = "postgres";
 $password = "123456789";
 
+// Enable error reporting
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // Connect to PostgreSQL
 try {
     $pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // Test query to check connection
+    $stmt = $pdo->query("SELECT 1");
+    if ($stmt) {
+        echo "Database connection successful.<br>";
+    } else {
+        echo "Database connection failed.<br>";
+    }
 } catch (PDOException $e) {
+    error_log("Database connection error: " . $e->getMessage(), 3, __DIR__ . '/error.log');
     die("Could not connect to the database: " . $e->getMessage());
 }
 
@@ -32,18 +46,6 @@ if (!empty($_FILES['csv_files']['name'][0])) {
             // Move the file to the upload directory
             if (move_uploaded_file($tmpFilePath, $destination)) {
                 $filePaths[] = $destination; // Add file path to array
-
-                // Insert file data into landing_table
-                $file = fopen($destination, 'r');
-                while (($data = fgetcsv($file)) !== FALSE) {
-                    try {
-                        $stmt = $pdo->prepare("INSERT INTO landing_table (order_id, product, quantity_ordered, price_each, order_date, purchase_address) VALUES (?, ?, ?, ?, ?, ?)");
-                        $stmt->execute($data);
-                    } catch (PDOException $e) {
-                        echo "Error inserting data: " . $e->getMessage();
-                    }
-                }
-                fclose($file);
             } else {
                 echo "Failed to move file: $fileName";
             }
@@ -59,12 +61,13 @@ $filePathsString = implode(',', $filePaths);
 // Call the stored procedure with the comma-separated string
 if (!empty($filePathsString)) {
     try {
-        $stmt = $pdo->prepare("CALL test_data_extraction(:filePaths)");
+        $stmt = $pdo->prepare("CALL data_extraction(:filePaths)");
         $stmt->bindParam(':filePaths', $filePathsString, PDO::PARAM_STR);
         $stmt->execute();
 
         echo "Files uploaded and processed successfully!";
     } catch (PDOException $e) {
+        error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
         echo "Error executing stored procedure: " . $e->getMessage();
     }
 } else {
