@@ -65,7 +65,19 @@ if (!empty($filePathsString)) {
         $stmt->bindParam(':file_paths', $filePathsString, PDO::PARAM_STR);
         $stmt->execute();
 
-        echo "Files uploaded and processed successfully!";
+        // Fetch and log RAISE NOTICE messages
+        $logMessages = [];
+        do {
+            $stmt->nextRowset();
+            $logMessages[] = $stmt->fetchColumn();
+        } while ($stmt->nextRowset());
+
+        $logFile = __DIR__ . '/message.log';
+        file_put_contents($logFile, "Files uploaded and processed successfully!\n", FILE_APPEND);
+        file_put_contents($logFile, "Log Messages:\n", FILE_APPEND);
+        foreach ($logMessages as $message) {
+            file_put_contents($logFile, $message . "\n", FILE_APPEND);
+        }
     } catch (PDOException $e) {
         error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
         echo "Error executing stored procedure: " . $e->getMessage();
