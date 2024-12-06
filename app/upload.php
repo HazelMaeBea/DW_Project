@@ -58,6 +58,18 @@ if (!empty($_FILES['csv_files']['name'][0])) {
 // Convert file paths to a comma-separated string
 $filePathsString = implode(',', $filePaths);
 
+// Create a temporary table to capture RAISE NOTICE messages
+$pdo->exec("CREATE TEMP TABLE temp_log (message TEXT)");
+
+// Create a custom function to log messages to the temporary table
+$pdo->exec("
+    CREATE OR REPLACE FUNCTION log_message(message TEXT) RETURNS VOID AS $$
+    BEGIN
+        INSERT INTO temp_log (message) VALUES (message);
+    END;
+    $$ LANGUAGE plpgsql;
+");
+
 // Call the stored procedure with the comma-separated string
 if (!empty($filePathsString)) {
     try {
@@ -66,12 +78,7 @@ if (!empty($filePathsString)) {
         $stmt->execute();
 
         // Fetch and log RAISE NOTICE messages
-        $logMessages = [];
-        do {
-            $stmt->nextRowset();
-            $logMessages[] = $stmt->fetchColumn();
-        } while ($stmt->nextRowset());
-
+        $logMessages = $pdo->query("SELECT message FROM temp_log")->fetchAll(PDO::FETCH_COLUMN);
         $logFile = __DIR__ . '/message.log';
         file_put_contents($logFile, "Files uploaded and processed successfully!\n", FILE_APPEND);
         file_put_contents($logFile, "Log Messages:\n", FILE_APPEND);
