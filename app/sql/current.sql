@@ -16,7 +16,6 @@ DROP TABLE cleaned_normalized
 CALL data_mapping();
 CALL data_cleansing();
 CALL normalize_data();
---CALL data_versioning(); --> No need to call this as when product_dimension is called it will call populate_product_dimension() for data versioning
 CALL create_product_dimension();
 
 --testing for duplicates, both complete and only ids
@@ -128,7 +127,7 @@ BEGIN
     CALL data_mapping();
     CALL data_cleansing();
     CALL normalize_data();
-    -- CALL create_product_dimension();
+    CALL create_product_dimension();
 END;
 $$;
 ---------------------------------------------------------------------------------------------------
@@ -480,83 +479,6 @@ END;
 $$;
 
 ---------------------------------------------------------------------------------------------------
-
--- Stored procedure for data versioning (old)
--- CREATE OR REPLACE PROCEDURE data_versioning()
--- LANGUAGE plpgsql
--- AS $$
--- DECLARE
---     rec RECORD; --iterate all products
---     existing_id VARCHAR;
--- BEGIN
--- 	CREATE TABLE IF NOT EXISTS product (
--- 	    product_id VARCHAR(255),
--- 	    product_name VARCHAR(255) NOT NULL,
--- 	    price_each NUMERIC(10, 2) NOT NULL,
--- 	    last_update_date TIMESTAMP NOT NULL,
--- 	    active_status CHAR(1) NOT NULL,
--- 	    action_flag CHAR(1) NOT NULL,
--- 		PRIMARY KEY (product_id, last_update_date)
--- 		);
-
-	
---     FOR rec IN
---         SELECT * FROM all_products ORDER BY order_date
---     LOOP
---         --check if is alr in product
---         SELECT product_id INTO existing_id
---         FROM product
---         WHERE product_name = rec.product_name
---           AND active_status = 'Y'; --check only active rec
-
---         IF existing_id IS NULL THEN
---             --insert if not in product table
---             INSERT INTO product (
---                 product_id, product_name, price_each, last_update_date, active_status, action_flag
---             )
---             VALUES (
---                 'P' || nextval('product_id_sequence'),
---                 rec.product_name,
---                 rec.price_each,
---                 rec.order_date,
---                 'Y',
---                 'I'
---             );
---         ELSE
---             --if prod exists, check if price_each is diff
---             IF EXISTS (
---                 SELECT 1
---                 FROM product
---                 WHERE product_name = rec.product_name
---                   AND price_each = rec.price_each
---                   AND active_status = 'Y'
---             ) THEN
---                 --skip if price is same
---                 CONTINUE;
---             END IF;
-
---             --if price is diff, change to inactive
---             UPDATE product
---             SET active_status = 'N'
---             WHERE product_id = existing_id;
-
---             --then insert the new version of the product w updated price
---             INSERT INTO product (
---                 product_id, product_name, price_each, last_update_date, active_status, action_flag
---             )
---             VALUES (
---                 'P' || nextval('product_id_sequence'),
---                 rec.product_name,
---                 rec.price_each,
---                 rec.order_date,
---                 'Y',
---                 'U'
---             );
---         END IF;
---     END LOOP;
--- END;
--- $$;
-
 -- Stored procedure for data versioning (new)
 CREATE OR REPLACE PROCEDURE populate_product_dimension()
 LANGUAGE plpgsql
@@ -650,29 +572,6 @@ BEGIN
 END;
 $$;
 ---------------------------------------------------------------------------------------------------------------
--- Stored procedure for product dimension(old)
--- CREATE OR REPLACE PROCEDURE product_dimension()
--- AS $$
--- BEGIN
---     CREATE TABLE IF NOT EXISTS all_products (
--- 	    product_name VARCHAR(255) NOT NULL,
--- 	    price_each NUMERIC(10, 2) NOT NULL,
--- 	    order_date TIMESTAMP NOT NULL
---     );
-
---     INSERT INTO all_products (product_name, price_each, order_date)
--- 	(
--- 		SELECT 
--- 			product_name,
--- 			price_each,
--- 			order_date
--- 		FROM cleaned_normalized --THIS IS FROM THE DATA NORMALIZATION AND CLEANSING 
--- 	);
-
--- 	CALL data_versioning();
--- END;
--- $$ LANGUAGE plpgsql;
-
 -- Stored procedure for product dimension(new)
 CREATE OR REPLACE PROCEDURE create_product_dimension()
 LANGUAGE plpgsql
@@ -710,32 +609,6 @@ END;
 $$;
 
 ---------------------------------------------------------------------------------------------------------------
---Function to change the product price (old)
--- CREATE OR REPLACE FUNCTION change_price(target_product_id VARCHAR, new_price NUMERIC)
--- RETURNS VOID
--- LANGUAGE plpgsql
--- AS 
--- $$
--- BEGIN
--- 	UPDATE product
--- 	SET active_status = 'N'
--- 	WHERE product_id = target_product_id;
-
--- 	INSERT INTO product (
--- 		product_id, product_name, new_price, last_update_date, active_status, action_flag
--- 	) 
-	
--- 	SELECT product_id, product_name, new_price, NOW(), 'Y', 'U'
--- 	  FROM product
--- 	 WHERE product_id = target_product_id 
--- 	 LIMIT 1;
--- END
--- $$;
-
--- CREATE SEQUENCE product_id_sequence
--- START 1
--- INCREMENT BY 1;
-
 --Function to change the product price (new)
 /*Note: The function here will not work if product dimension doesn't exist yet so you will have to run the etl once in order to 
 store this in the postgresql.*/
