@@ -1,3 +1,4 @@
+TRUNCATE TABLE landing_table;
 TRUNCATE TABLE cleaned;
 TRUNCATE TABLE for_cleaning;
 TRUNCATE TABLE invalid;
@@ -17,7 +18,6 @@ CALL data_cleansing();
 CALL normalize_data();
 CALL data_versioning();
 CALL product_dimension();
-CALL truncate_all_tables();
 
 --testing for duplicates, both complete and only ids
 SELECT * FROM for_cleaning
@@ -62,9 +62,6 @@ BEGIN
         purchase_address VARCHAR(255)
     );
 
-    -- Clear the landing_table before inserting new data
-    DELETE FROM landing_table;
-
     -- Split the file paths into an array
     FOR file_path IN SELECT unnest(string_to_array(file_paths, ',')) LOOP
         -- Create a temporary table to hold the CSV data
@@ -93,19 +90,68 @@ BEGIN
 END;
 $$;
 
--- Trigger function to run procedures after insert on landing_table
+-- Procedure to clear all relevant tables
+CREATE OR REPLACE PROCEDURE clear_all_tables()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'landing_table') THEN
+        DELETE FROM landing_table;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cleaned') THEN
+        DELETE FROM cleaned;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'for_cleaning') THEN
+        DELETE FROM for_cleaning;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'invalid') THEN
+        DELETE FROM invalid;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cleaned_normalized') THEN
+        DELETE FROM cleaned_normalized;
+    END IF;
+    
+    RAISE NOTICE 'All tables cleared.';
+END;
+$$;
+
+-- Procedure to call all necessary procedures
+CREATE OR REPLACE PROCEDURE call_all_procedures()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    CALL data_mapping();
+    CALL data_cleansing();
+    CALL normalize_data();
+    -- CALL product_dimension();
+END;
+$$;
+
+-- Trigger function to call clear_all_tables before insert on landing_table
+CREATE OR REPLACE FUNCTION before_insert_landing_table()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    CALL clear_all_tables();
+    RETURN NEW;
+END;
+$$;
+
+-- Trigger to call the function before insert on landing_table
+DROP TRIGGER IF EXISTS before_insert_landing_table_trigger ON landing_table;
+CREATE TRIGGER before_insert_landing_table_trigger
+BEFORE INSERT ON landing_table
+FOR EACH STATEMENT
+EXECUTE FUNCTION before_insert_landing_table();
+
+-- Trigger function to call call_all_procedures after insert on landing_table
 CREATE OR REPLACE FUNCTION after_insert_landing_table()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    -- Ensure all relevant tables are empty
-    CALL truncate_all_tables();
-    
-    -- Call the procedures
-    CALL data_mapping();
-    CALL data_cleansing();
-    CALL normalize_data();
+    CALL call_all_procedures();
     RETURN NEW;
 END;
 $$;
@@ -116,6 +162,8 @@ CREATE TRIGGER after_insert_landing_table_trigger
 AFTER INSERT ON landing_table
 FOR EACH STATEMENT
 EXECUTE FUNCTION after_insert_landing_table();
+
+---------------------------------------------------------------------------------------------------
 
 -- Stored procedure for data mapping
 CREATE OR REPLACE PROCEDURE data_mapping()
@@ -456,7 +504,6 @@ CREATE OR REPLACE PROCEDURE truncate_all_tables()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    DELETE FROM landing_table;
     DELETE FROM cleaned;
     DELETE FROM for_cleaning;
     DELETE FROM invalid;
