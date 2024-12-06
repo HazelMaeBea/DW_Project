@@ -1,4 +1,5 @@
 let selectedFiles = [];
+
 function displaySelectedFiles(input) {
 	const newFiles = Array.from(input.files);
 	const uniqueFiles = newFiles.filter((newFile) => {
@@ -12,6 +13,7 @@ function displaySelectedFiles(input) {
 	input.value = ""; // Reset input value for re-upload
 	updateFileList();
 }
+
 function updateFileList() {
 	const fileList = document.getElementById("file-list");
 	fileList.innerHTML = ""; // Clear previous list
@@ -30,10 +32,12 @@ function updateFileList() {
 		"file-label"
 	).textContent = `${selectedFiles.length} file(s) selected`;
 }
+
 function removeFile(index) {
 	selectedFiles.splice(index, 1);
 	updateFileList();
 }
+
 function submitForm(event) {
 	event.preventDefault();
 	const formData = new FormData();

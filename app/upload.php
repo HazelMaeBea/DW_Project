@@ -61,8 +61,8 @@ $filePathsString = implode(',', $filePaths);
 // Call the stored procedure with the comma-separated string
 if (!empty($filePathsString)) {
     try {
-        $stmt = $pdo->prepare("CALL data_extraction(:filePaths)");
-        $stmt->bindParam(':filePaths', $filePathsString, PDO::PARAM_STR);
+        $stmt = $pdo->prepare("CALL data_extraction(:file_paths)");
+        $stmt->bindParam(':file_paths', $filePathsString, PDO::PARAM_STR);
         $stmt->execute();
 
         echo "Files uploaded and processed successfully!";

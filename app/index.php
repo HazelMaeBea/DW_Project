@@ -14,12 +14,12 @@
             <p>Processing files, please wait...</p>
         </div>
     </div>
-    <form action="upload.php" onsubmit="submitForm(event)">
+    <form action="upload.php" method="post" enctype="multipart/form-data" onsubmit="submitForm(event)">
         <h1>ETL Pipeline</h1>
         <label class="custom-file-upload" onclick="document.getElementById('file-input').click();">
             Choose CSV Files
         </label>
-        <input type="file" id="file-input" accept=".csv" multiple onchange="displaySelectedFiles(this)">
+        <input type="file" id="file-input" name="csv_files[]" accept=".csv" multiple onchange="displaySelectedFiles(this)">
         <div id="file-list"></div>
         <button type="submit">Upload</button>
     </form>
