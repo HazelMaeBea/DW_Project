@@ -1,3 +1,13 @@
+-- Create landing_table if it doesn't exist
+CREATE TABLE IF NOT EXISTS landing_table (
+    order_id VARCHAR(255),
+    product VARCHAR(255),
+    quantity_ordered VARCHAR(255),
+    price_each VARCHAR(255),
+    order_date VARCHAR(255),
+    purchase_address VARCHAR(255)
+);
+
 TRUNCATE TABLE cleaned;
 TRUNCATE TABLE for_cleaning;
 TRUNCATE TABLE invalid;
@@ -17,6 +27,7 @@ CALL data_cleansing();
 CALL normalize_data();
 CALL data_versioning();
 CALL product_dimension();
+CALL truncate_all_tables();
 
 --testing for duplicates, both complete and only ids
 SELECT * FROM for_cleaning
@@ -45,6 +56,7 @@ CREATE OR REPLACE PROCEDURE data_mapping()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    RAISE NOTICE 'Starting data mapping...';
 
 	CREATE TABLE IF NOT EXISTS cleaned (
     order_id INT,
@@ -73,6 +85,8 @@ BEGIN
     purchase_address VARCHAR(255)
 	);
     
+    RAISE NOTICE 'Tables created or verified.';
+
     INSERT INTO invalid
     SELECT * FROM landing_table
     WHERE order_id IS NULL 
@@ -88,6 +102,8 @@ BEGIN
         OR LOWER(order_date) = 'order date'
         OR LOWER(purchase_address) = 'purchase address';
     
+    RAISE NOTICE 'Invalid records inserted.';
+
     INSERT INTO cleaned
     SELECT
         order_id::INT,
@@ -114,6 +130,8 @@ BEGIN
 		  -- to catch duplicates
       );
 
+    RAISE NOTICE 'Cleaned records inserted.';
+
     -- Insert remaining values into for_cleaning table
     INSERT INTO for_cleaning
     SELECT *
@@ -135,6 +153,8 @@ BEGIN
     AND LOWER(price_each) != 'price each'
     AND LOWER(order_date) != 'order date'
     AND LOWER(purchase_address) != 'purchase address';
+
+    RAISE NOTICE 'Remaining records inserted into for_cleaning.';
 END;
 $$;
 
@@ -143,10 +163,14 @@ CREATE OR REPLACE PROCEDURE data_cleansing()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    RAISE NOTICE 'Starting data cleansing...';
+
     -- Fix to 2 decimal points
     UPDATE for_cleaning
     SET price_each = TO_CHAR(ROUND(CAST(price_each AS NUMERIC), 2), 'FM999999999.00')
     WHERE price_each ~ '^[0-9]+(\.[0-9]{1,2})?$';
+
+    RAISE NOTICE 'Price each fixed to 2 decimal points.';
 
     -- Insert into CLEANED table one instance of complete duplicate
     INSERT INTO cleaned
@@ -169,6 +193,8 @@ BEGIN
         ORDER BY order_id, product
     );
 
+    RAISE NOTICE 'One (1) Copy Complete duplicates inserted into cleaned.';
+
     -- Insert into INVALID table other instance of complete duplicate
     INSERT INTO invalid
     SELECT 
@@ -189,6 +215,8 @@ BEGIN
         HAVING COUNT(*) > 1
         ORDER BY order_id, product
     );
+
+    RAISE NOTICE 'Other Complete duplicates inserted into invalid.';
 
     -- Delete records from FOR_CLEANING after insertion to cleaned and invalid
     DELETE FROM for_cleaning
@@ -216,6 +244,8 @@ BEGIN
       )
     );
 
+    RAISE NOTICE 'Complete Duplicates deleted from for_cleaning.';
+
     -- Insert non-duplicate records from the for processing
     INSERT INTO cleaned
     SELECT 
@@ -235,6 +265,8 @@ BEGIN
         )
     );
 
+    RAISE NOTICE 'Non-duplicate records inserted into cleaned.';
+
     -- Delete non-duplicate records from the for processing
     DELETE FROM for_cleaning
     WHERE (order_id, product, quantity_ordered, price_each, order_date, purchase_address) NOT IN (
@@ -245,6 +277,8 @@ BEGIN
             HAVING COUNT(*) > 1
         )    
     );
+
+    RAISE NOTICE 'Non-duplicate records deleted from for_cleaning.';
 
     -- Handle duplicate IDs with different products or quantities
     WITH row_numbers AS (
@@ -263,6 +297,8 @@ BEGIN
     FROM row_numbers
     WHERE for_cleaning.ctid = row_numbers.ctid;
 
+    RAISE NOTICE 'Duplicate IDs with different products or quantities handled.';
+
     -- Insert the updated records into the cleaned table
     INSERT INTO cleaned
     SELECT 
@@ -274,14 +310,20 @@ BEGIN
         purchase_address
     FROM for_cleaning;
 
+    RAISE NOTICE 'Updated records inserted into cleaned.';
+
     -- Trim data in the cleaned table
     UPDATE cleaned
     SET 
         product = TRIM(BOTH FROM product),
         purchase_address = TRIM(BOTH FROM purchase_address);
 
+    RAISE NOTICE 'Data trimmed in cleaned table.';
+
     -- Clean up
     TRUNCATE for_cleaning;
+
+    RAISE NOTICE 'Data cleansing completed.';
 END;
 $$;
 
@@ -290,6 +332,8 @@ CREATE OR REPLACE PROCEDURE normalize_data()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    RAISE NOTICE 'Starting data normalization...';
+
     -- Create the cleaned_normalized table with appropriate data types
     CREATE TABLE IF NOT EXISTS cleaned_normalized (
         order_id INT,
@@ -307,6 +351,8 @@ BEGIN
         state VARCHAR(255),
         zip_code VARCHAR(255)
     );
+
+    RAISE NOTICE 'cleaned_normalized table created or verified.';
 
     -- Insert data into cleaned_normalized
     INSERT INTO cleaned_normalized 
@@ -328,12 +374,56 @@ BEGIN
 		SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
     FROM cleaned;
 
+    RAISE NOTICE 'Data inserted into cleaned_normalized.';
+
     -- Truncate the cleaned table
     TRUNCATE TABLE cleaned;
+
+    RAISE NOTICE 'cleaned table truncated.';
+
+    RAISE NOTICE 'Data normalization completed.';
 END;
 $$;
 
--- Stored procedure for data versioning
+-- Procedure to truncate all relevant tables
+CREATE OR REPLACE PROCEDURE truncate_all_tables()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    TRUNCATE TABLE landing_table;
+    TRUNCATE TABLE cleaned;
+    TRUNCATE TABLE for_cleaning;
+    TRUNCATE TABLE invalid;
+    TRUNCATE TABLE cleaned_normalized;
+END;
+$$;
+
+-- Trigger function to run procedures after insert on landing_table
+CREATE OR REPLACE FUNCTION after_insert_landing_table()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Ensure all relevant tables are empty
+    CALL truncate_all_tables();
+    
+    -- Call the procedures
+    CALL data_mapping();
+    CALL data_cleansing();
+    CALL normalize_data();
+    RETURN NEW;
+END;
+$$;
+
+-- Trigger to call the function after insert on landing_table
+CREATE TRIGGER after_insert_landing_table_trigger
+AFTER INSERT ON landing_table
+FOR EACH STATEMENT
+EXECUTE FUNCTION after_insert_landing_table();
+
+---------------------------------------------------------------------------------------------------
+
+-- Stored procedure for data versioning (old)
 CREATE OR REPLACE PROCEDURE data_versioning()
 LANGUAGE plpgsql
 AS $$
@@ -457,81 +547,14 @@ CREATE SEQUENCE product_id_sequence
 START 1
 INCREMENT BY 1;
 
-CREATE OR REPLACE PROCEDURE data_versioning()
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    rec RECORD; --iterate all products
-    existing_id VARCHAR;
-BEGIN
-	CREATE TABLE IF NOT EXISTS product (
-	    product_id VARCHAR(255),
-	    product_name VARCHAR(255) NOT NULL,
-	    price_each NUMERIC(10, 2) NOT NULL,
-	    last_update_date TIMESTAMP NOT NULL,
-	    active_status CHAR(1) NOT NULL,
-	    action_flag CHAR(1) NOT NULL,
-		PRIMARY KEY (product_id, last_update_date)
-		);
 
-	
-    FOR rec IN
-        SELECT * FROM all_products ORDER BY order_date
-    LOOP
-        --check if is alr in product
-        SELECT product_id INTO existing_id
-        FROM product
-        WHERE product_name = rec.product_name
-          AND active_status = 'Y'; --check only active rec
+-- Place code for creating time_dimension table here
 
-        IF existing_id IS NULL THEN
-            --insert if not in product table
-            INSERT INTO product (
-                product_id, product_name, price_each, last_update_date, active_status, action_flag
-            )
-            VALUES (
-                'P' || nextval('product_id_sequence'),
-                rec.product_name,
-                rec.price_each,
-                rec.order_date,
-                'Y',
-                'I'
-            );
-        ELSE
-            --if prod exists, check if price_each is diff
-            IF EXISTS (
-                SELECT 1
-                FROM product
-                WHERE product_name = rec.product_name
-                  AND price_each = rec.price_each
-                  AND active_status = 'Y'
-            ) THEN
-                --skip if price is same
-                CONTINUE;
-            END IF;
+-- Place code for creating product_dimension table here
 
-            --if price is diff, change to inactive
-            UPDATE product
-            SET active_status = 'N'
-            WHERE product_id = existing_id;
+-- Place code for creating location_dimension table here
 
-            --then insert the new version of the product w updated price
-            INSERT INTO product (
-                product_id, product_name, price_each, last_update_date, active_status, action_flag
-            )
-            VALUES (
-                'P' || nextval('product_id_sequence'),
-                rec.product_name,
-                rec.price_each,
-                rec.order_date,
-                'Y',
-                'U'
-            );
-        END IF;
-    END LOOP;
-END;
-$$;
----------------------------------------------------------------------------------------------------
+-- Place code for creating sales_fact table here
 
 
 

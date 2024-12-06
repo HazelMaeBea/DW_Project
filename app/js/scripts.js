@@ -38,10 +38,20 @@ function submitForm(event) {
 	event.preventDefault();
 	const formData = new FormData();
 	selectedFiles.forEach((file) => formData.append("csv_files[]", file));
+	document.getElementById("loading-screen").style.display = "flex";
 	fetch("upload.php", {
+		// Reverted to point to upload.php
 		method: "POST",
 		body: formData,
 	})
-		.then(() => alert("Files uploaded and processed successfully."))
-		.catch((error) => console.error("Error:", error));
+		.then((response) => response.text())
+		.then((message) => {
+			document.getElementById("loading-screen").style.display = "none";
+			document.getElementById("confirmation-message").textContent =
+				message;
+		})
+		.catch((error) => {
+			document.getElementById("loading-screen").style.display = "none";
+			console.error("Error:", error);
+		});
 }

@@ -32,9 +32,25 @@ if (!empty($_FILES['csv_files']['name'][0])) {
             // Move the file to the upload directory
             if (move_uploaded_file($tmpFilePath, $destination)) {
                 $filePaths[] = $destination; // Add file path to array
+
+                // Insert file data into landing_table
+                $file = fopen($destination, 'r');
+                while (($data = fgetcsv($file)) !== FALSE) {
+                    try {
+                        $stmt = $pdo->prepare("INSERT INTO landing_table (order_id, product, quantity_ordered, price_each, order_date, purchase_address) VALUES (?, ?, ?, ?, ?, ?)");
+                        $stmt->execute($data);
+                    } catch (PDOException $e) {
+                        echo "Error inserting data: " . $e->getMessage();
+                    }
+                }
+                fclose($file);
+            } else {
+                echo "Failed to move file: $fileName";
             }
         }
     }
+} else {
+    echo "No files uploaded.";
 }
 
 // Convert file paths to a comma-separated string
