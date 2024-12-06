@@ -17,7 +17,7 @@ CALL data_mapping();
 CALL data_cleansing();
 CALL normalize_data();
 --CALL data_versioning(); --> No need to call this as when product_dimension is called it will call populate_product_dimension() for data versioning
-CALL product_dimension();
+CALL create_product_dimension();
 
 --testing for duplicates, both complete and only ids
 SELECT * FROM for_cleaning
