@@ -912,6 +912,120 @@ CALL populate_time_dimension();
 
 END;
 $$ LANGUAGE plpgsql;
+
+-- Procedure to handle time insert
+CREATE OR REPLACE FUNCTION handle_time_insert()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_year VARCHAR;
+    v_halfyear VARCHAR;
+    v_quarter VARCHAR;
+    v_month VARCHAR;
+    v_day VARCHAR;
+BEGIN
+    -- Extract time components from NEW.order_date
+    v_year := to_char(NEW.order_date, 'YYYY');
+    v_halfyear := to_char(CEIL(EXTRACT(MONTH FROM NEW.order_date) / 6), 'FM00');
+    v_quarter := to_char(EXTRACT(QUARTER FROM NEW.order_date), 'FM00');
+    v_month := to_char(EXTRACT(MONTH FROM NEW.order_date), 'FM00');
+    v_day := to_char(EXTRACT(DAY FROM NEW.order_date), 'FM00');
+
+    -- Insert year if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Y' || v_year) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('Y' || v_year, v_year, 4, NULL);
+    END IF;
+
+    -- Insert halfyear if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'H' || v_year || v_halfyear) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('H' || v_year || v_halfyear, v_year || ' H' || v_halfyear, 3, 'Y' || v_year);
+    END IF;
+
+    -- Insert quarter if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Q' || v_year || v_quarter) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('Q' || v_year || v_quarter, v_year || ' Q' || v_quarter, 2, 'Y' || v_year);
+    END IF;
+
+    -- Insert month if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'M' || v_year || v_month) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('M' || v_year || v_month, v_year || '-' || v_month, 1, 'Y' || v_year);
+    END IF;
+
+    -- Insert day if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'D' || v_year || v_month || v_day) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('D' || v_year || v_month || v_day, v_year || '-' || v_month || '-' || v_day, 0, 'M' || v_year || v_month);
+    END IF;
+
+    RETURN NEW;  -- Allow the modified INSERT to proceed
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger that only fires for time inserts
+CREATE TRIGGER tr_handle_time_insert
+BEFORE INSERT
+ON time_dimension
+FOR EACH ROW
+EXECUTE FUNCTION handle_time_insert();
+
+-- Update the insert function to include all required fields
+CREATE OR REPLACE FUNCTION insert_new_time
+(
+    in p_order_date TIMESTAMP
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_year VARCHAR;
+    v_halfyear VARCHAR;
+    v_quarter VARCHAR;
+    v_month VARCHAR;
+    v_day VARCHAR;
+BEGIN
+    -- Extract time components
+    v_year := to_char(p_order_date, 'YYYY');
+    v_halfyear := to_char(CEIL(EXTRACT(MONTH FROM p_order_date) / 6), 'FM00');
+    v_quarter := to_char(EXTRACT(QUARTER FROM p_order_date), 'FM00');
+    v_month := to_char(EXTRACT(MONTH FROM p_order_date), 'FM00');
+    v_day := to_char(EXTRACT(DAY FROM p_order_date), 'FM00');
+
+    -- Insert year if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Y' || v_year) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('Y' || v_year, v_year, 4, NULL);
+    END IF;
+
+    -- Insert halfyear if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'H' || v_year || v_halfyear) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('H' || v_year || v_halfyear, v_year || ' H' || v_halfyear, 3, 'Y' || v_year);
+    END IF;
+
+    -- Insert quarter if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Q' || v_year || v_quarter) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('Q' || v_year || v_quarter, v_year || ' Q' || v_quarter, 2, 'Y' || v_year);
+    END IF;
+
+    -- Insert month if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'M' || v_year || v_month) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('M' || v_year || v_month, v_year || '-' || v_month, 1, 'Y' || v_year);
+    END IF;
+
+    -- Insert day if not exists
+    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'D' || v_year || v_month || v_day) THEN
+        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
+        VALUES ('D' || v_year || v_month || v_day, v_year || '-' || v_month || '-' || v_day, 0, 'M' || v_year || v_month);
+    END IF;
+END;
+$$;
+
+-- 
 ---------------------------------------------------------------------------------------------------------------
 -- [Location Dimension]
 
