@@ -801,73 +801,57 @@ END;
 $$;
 
 --Function to insert a new product
-/*Note: The function here will not work if product dimension doesn't exist yet so you will have to run the etl once in order to store this in the postgresql.*/
-CREATE OR REPLACE FUNCTION handle_product_insert()
-RETURNS TRIGGER AS $$
-DECLARE
-    next_pk_id INTEGER;
-    next_pid_id INTEGER;
-BEGIN
-    -- Get the next PK_ and PID_ numbers
-    SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
-    INTO next_pk_id 
-    FROM product_dimension;
-    
-    SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
-    INTO next_pid_id 
-    FROM product_dimension;
-
-    -- Set the values in NEW
-    NEW.product_key := 'PK_' || LPAD(next_pk_id::TEXT, 4, '0');
-    NEW.product_id := 'PID_' || LPAD(next_pid_id::TEXT, 4, '0');
-    NEW.last_update_date := TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS');
-    NEW.active_status := 'Y';
-    NEW.action_flag := 'I';
-    
-    RETURN NEW;  -- Allow the modified INSERT to proceed
-END;
-$$ LANGUAGE plpgsql;
-
--- Create the trigger
-CREATE TRIGGER tr_handle_product_insert
-BEFORE INSERT
-ON product_dimension
-FOR EACH ROW
-EXECUTE FUNCTION handle_product_insert();
-
+/*Note: I removed the trigger*/
 -- Update the insert function to include all required fields
-CREATE OR REPLACE FUNCTION insert_new_product
-(
+CREATE OR REPLACE FUNCTION insert_new_product(
     in p_product_name VARCHAR,
     in p_price_each DECIMAL
 )
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    next_pk_id INTEGER;
+    next_pid_id INTEGER;
 BEGIN
-    -- Check if product already exists
     IF EXISTS (
         SELECT 1
         FROM product_dimension
-        WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
+        WHERE LOWER(product_name) =LOWER(TRIM(p_product_name))
         AND active_status = 'Y'
     ) THEN
         RAISE EXCEPTION 'Product % already exists!', p_product_name;
     ELSE
-        INSERT INTO product_dimension 
-        (
+        -- Get the next IDs
+        SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
+        INTO next_pk_id 
+        FROM product_dimension;
+        
+        SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
+        INTO next_pid_id 
+        FROM product_dimension;
+
+        -- Insert new product
+        INSERT INTO product_dimension (
+            product_key,
+            product_id,
             product_name,
-            price_each
-        ) 
-        VALUES 
-        (
+            price_each,
+            last_update_date,
+            active_status,
+            action_flag
+        ) VALUES (
+            'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+            'PID_' || LPAD(next_pid_id::TEXT, 4, '0'),
             INITCAP(TRIM(p_product_name)),
-            p_price_each
+            p_price_each,
+            TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS'),
+            'Y',
+            'I'
         );
     END IF;
 END;
 $$;
-
 ---------------------------------------------------------------------------------------------------------------
 -- [Time Dimension]
 
