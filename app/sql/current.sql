@@ -9,6 +9,7 @@ TRUNCATE TABLE product_dimension;
 TRUNCATE TABLE time_dimension;
 TRUNCATE TABLE location_dimension;
 TRUNCATE TABLE final_fact;
+TRUNCATE TABLE data_cube;
 
 SELECT * FROM landing_table;
 SELECT * FROM cleaned;
@@ -19,6 +20,7 @@ SELECT * FROM product_dimension;
 SELECT * FROM time_dimension;
 SELECT * FROM location_dimension ORDER BY level DESC;
 SELECT * FROM final_fact;
+SELECT * FROM data_cube;
 
 DROP TABLE cleaned_normalized
 
@@ -35,6 +37,7 @@ CALL create_time_dimension();
 CALL create_location_dimension();
 CALL populate_location_dimension();
 CALL create_final_fact_table();
+CALL create_data_cube();
 
 -- Testing for duplicates, both complete and only ids
 SELECT * FROM for_cleaning
@@ -244,6 +247,8 @@ BEGIN
     CALL create_location_dimension();
     CALL create_time_dimension();
     CALL create_final_fact_table();
+    CALL create_data_cube();
+    CALL create_data_cube();
 END;
 $$;
 ----------------------------------------------------------------------------------------------------------------------
@@ -1178,5 +1183,27 @@ BEGIN
 END;
 $$;
 
+
+CREATE OR REPLACE PROCEDURE create_data_cube()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Drop the data_cube table if it exists
+    DROP TABLE IF EXISTS data_cube;
+
+    -- Create the data_cube table with aggregated data
+    CREATE TABLE data_cube AS
+    SELECT
+        product_id,
+        time_id,
+        location_id,
+        SUM(total_sales) AS total_sales_sum
+    FROM final_fact
+    GROUP BY
+        CUBE(product_id, time_id, location_id);
+
+    RAISE NOTICE 'data_cube table created and populated.';
+END;
+$$;
 
 
