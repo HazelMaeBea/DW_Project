@@ -1161,7 +1161,99 @@ BEGIN
         pd.product_id,
         cn.quantity_ordered,
         ld.location_id,
-        ('D' || cn.year || cn.halfyear || cn.quarter || cn.month || cn.day) AS time_id,
+        ('Y' || cn.year) AS time_id,
+        cn.quantity_ordered * (
+            SELECT sub_pd.price_each
+            FROM product_dimension sub_pd
+            WHERE sub_pd.product_id = pd.product_id
+              AND sub_pd.active_status = 'Y'
+              AND sub_pd.last_update_date >= cn.order_date
+            ORDER BY sub_pd.last_update_date DESC
+            LIMIT 1
+        ) AS total_sales
+    FROM cleaned_normalized cn
+    INNER JOIN product_dimension pd
+        ON TRIM(LOWER(cn.product)) = TRIM(LOWER(pd.product_name))
+    INNER JOIN location_dimension ld
+        ON TRIM(LOWER(ld.location_name)) = TRIM(LOWER(
+            cn.street || ', ' || cn.city || ', ' || cn.state || ' ' || cn.zip_code
+        ))
+    UNION ALL
+    SELECT
+        cn.order_id,
+        pd.product_id,
+        cn.quantity_ordered,
+        ld.location_id,
+        ('Y' || cn.year || 'H' || cn.halfyear) AS time_id,
+        cn.quantity_ordered * (
+            SELECT sub_pd.price_each
+            FROM product_dimension sub_pd
+            WHERE sub_pd.product_id = pd.product_id
+              AND sub_pd.active_status = 'Y'
+              AND sub_pd.last_update_date >= cn.order_date
+            ORDER BY sub_pd.last_update_date DESC
+            LIMIT 1
+        ) AS total_sales
+    FROM cleaned_normalized cn
+    INNER JOIN product_dimension pd
+        ON TRIM(LOWER(cn.product)) = TRIM(LOWER(pd.product_name))
+    INNER JOIN location_dimension ld
+        ON TRIM(LOWER(ld.location_name)) = TRIM(LOWER(
+            cn.street || ', ' || cn.city || ', ' || cn.state || ' ' || cn.zip_code
+        ))
+    UNION ALL
+    SELECT
+        cn.order_id,
+        pd.product_id,
+        cn.quantity_ordered,
+        ld.location_id,
+        ('Y' || cn.year || 'Q' || cn.quarter) AS time_id,
+        cn.quantity_ordered * (
+            SELECT sub_pd.price_each
+            FROM product_dimension sub_pd
+            WHERE sub_pd.product_id = pd.product_id
+              AND sub_pd.active_status = 'Y'
+              AND sub_pd.last_update_date >= cn.order_date
+            ORDER BY sub_pd.last_update_date DESC
+            LIMIT 1
+        ) AS total_sales
+    FROM cleaned_normalized cn
+    INNER JOIN product_dimension pd
+        ON TRIM(LOWER(cn.product)) = TRIM(LOWER(pd.product_name))
+    INNER JOIN location_dimension ld
+        ON TRIM(LOWER(ld.location_name)) = TRIM(LOWER(
+            cn.street || ', ' || cn.city || ', ' || cn.state || ' ' || cn.zip_code
+        ))
+    UNION ALL
+    SELECT
+        cn.order_id,
+        pd.product_id,
+        cn.quantity_ordered,
+        ld.location_id,
+        ('Y' || cn.year || 'M' || cn.month) AS time_id,
+        cn.quantity_ordered * (
+            SELECT sub_pd.price_each
+            FROM product_dimension sub_pd
+            WHERE sub_pd.product_id = pd.product_id
+              AND sub_pd.active_status = 'Y'
+              AND sub_pd.last_update_date >= cn.order_date
+            ORDER BY sub_pd.last_update_date DESC
+            LIMIT 1
+        ) AS total_sales
+    FROM cleaned_normalized cn
+    INNER JOIN product_dimension pd
+        ON TRIM(LOWER(cn.product)) = TRIM(LOWER(pd.product_name))
+    INNER JOIN location_dimension ld
+        ON TRIM(LOWER(ld.location_name)) = TRIM(LOWER(
+            cn.street || ', ' || cn.city || ', ' || cn.state || ' ' || cn.zip_code
+        ))
+    UNION ALL
+    SELECT
+        cn.order_id,
+        pd.product_id,
+        cn.quantity_ordered,
+        ld.location_id,
+        ('Y' || cn.year || 'M' || cn.month || 'D' || cn.day) AS time_id,
         cn.quantity_ordered * (
             SELECT sub_pd.price_each
             FROM product_dimension sub_pd
