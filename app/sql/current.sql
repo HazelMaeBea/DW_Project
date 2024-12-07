@@ -584,6 +584,99 @@ $$;
 ---------------------------------------------------------------------------------------------------------------
 -- [Product Dimension]
 
+-- Stored procedure for data versioning
+CREATE OR REPLACE PROCEDURE populate_product_dimension()
+LANGUAGE plpgsql
+AS $$
+DECLARE
+	p_record RECORD;
+	next_pk_id INTEGER := 1;
+	next_pid_id INTEGER := 1;
+BEGIN
+    FOR p_record IN
+    (
+        SELECT *
+        FROM product
+    )
+    LOOP
+        --Checks if product exists
+        IF NOT EXISTS
+        (
+            SELECT 1
+            FROM product_dimension
+            WHERE product_name = p_record.product
+            AND active_status = 'Y'
+        )
+        THEN
+            INSERT INTO product_dimension
+            (
+		product_key,
+                product_id,
+                product_name,
+                price_each,
+                last_update_date,
+                active_status,
+                action_flag
+            )
+            VALUES
+            (
+		'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+                'PID_' || LPAD(next_pid_id::TEXT, 4, '0'),
+                p_record.product,
+                p_record.price_each,
+                p_record.order_date,
+                'Y',
+                'I'
+            );
+
+		next_pk_id := next_pk_id + 1;
+		next_pid_id := next_pid_id + 1;
+
+        ELSE
+            IF EXISTS
+            (
+                SELECT 1
+                FROM product_dimension
+                WHERE product_name = p_record.product
+                AND active_status = 'Y'
+                AND price_each != p_record.price_each
+            )
+            THEN
+                UPDATE product_dimension
+                SET active_status = 'N'
+                WHERE product_name = p_record.product
+                AND active_status = 'Y';
+
+                INSERT INTO product_dimension
+                (
+			product_key,
+			product_id,
+			product_name,
+			price_each,
+			last_update_date,
+			active_status,
+			action_flag
+                )
+                SELECT 
+                    'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+                    pd.product_id,
+                    p_record.product,
+                    p_record.price_each,
+                    p_record.order_date,
+                    'Y',
+                    'U'
+                FROM product_dimension pd
+                WHERE pd.product_name = p_record.product
+                AND pd.active_status = 'N'
+                LIMIT 1;
+
+                next_pk_id := next_pk_id + 1;
+            END IF;
+        END IF;
+    END LOOP;
+END;
+$$;
+
 -- Stored procedure for product dimension
 CREATE OR REPLACE PROCEDURE create_product_dimension()
 LANGUAGE plpgsql
