@@ -575,7 +575,20 @@ DECLARE
 	p_record RECORD;
 	next_pk_id INTEGER := 1;
 	next_pid_id INTEGER := 1;
+	
 BEGIN
+	--Method 1: Get the current highest pk and pid values
+	--SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
+	--INTO next_pk_id 
+	--FROM product_dimension;
+	    
+	--SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
+	--INTO next_pid_id 
+	--FROM product_dimension;
+	
+	--Method 2 (Best kasi uniform siya sa other procedures): Clear the entire table so next_pd_id and next_pid_id have no conflicts when data extractionn() is called again
+	--TRUNCATE TABLE product_dimension;
+	
     FOR p_record IN
     (
         SELECT *
