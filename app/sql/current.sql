@@ -7,6 +7,8 @@ TRUNCATE TABLE invalid;
 TRUNCATE TABLE cleaned_normalized;
 TRUNCATE TABLE product_dimension;
 TRUNCATE TABLE time_dimension;
+TRUNCATE TABLE location_dimension;
+TRUNCATE TABLE final_fact;
 
 SELECT * FROM landing_table;
 SELECT * FROM cleaned;
@@ -16,6 +18,7 @@ SELECT * FROM cleaned_normalized;
 SELECT * FROM product_dimension;
 SELECT * FROM time_dimension;
 SELECT * FROM location_dimension ORDER BY level DESC;
+SELECT * FROM final_fact;
 
 DROP TABLE cleaned_normalized
 
