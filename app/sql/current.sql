@@ -593,6 +593,8 @@ DECLARE
 	next_pk_id INTEGER := 1;
 	next_pid_id INTEGER := 1;
 BEGIN
+    TRUNCATE TABLE product_dimension;
+
     FOR p_record IN
     (
         SELECT *
