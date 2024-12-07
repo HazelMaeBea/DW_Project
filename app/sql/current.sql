@@ -1,67 +1,67 @@
 -- [For Testing Purposes]
 
-TRUNCATE TABLE landing_table;
-TRUNCATE TABLE cleaned;
-TRUNCATE TABLE for_cleaning;
-TRUNCATE TABLE invalid;
-TRUNCATE TABLE cleaned_normalized;
-TRUNCATE TABLE product_dimension;
-TRUNCATE TABLE time_dimension;
-TRUNCATE TABLE location_dimension;
-TRUNCATE TABLE final_fact;
-TRUNCATE TABLE data_cube;
+-- Truncate all tables
+    TRUNCATE TABLE landing_table;
+    TRUNCATE TABLE cleaned;
+    TRUNCATE TABLE for_cleaning;
+    TRUNCATE TABLE invalid;
+    TRUNCATE TABLE cleaned_normalized;
+    TRUNCATE TABLE product_dimension;
+    TRUNCATE TABLE time_dimension;
+    TRUNCATE TABLE location_dimension;
+    TRUNCATE TABLE final_fact;
+    TRUNCATE TABLE data_cube;
 
-SELECT * FROM landing_table;
-SELECT * FROM cleaned;
-SELECT * FROM for_cleaning;
-SELECT * FROM invalid;
-SELECT * FROM cleaned_normalized;
-SELECT * FROM product_dimension;
-SELECT * FROM time_dimension;
-SELECT * FROM location_dimension ORDER BY level DESC;
-SELECT * FROM final_fact;
-SELECT * FROM data_cube;
-
-DROP TABLE cleaned_normalized
+-- Select statements
+    SELECT * FROM landing_table;
+    SELECT * FROM cleaned;
+    SELECT * FROM for_cleaning;
+    SELECT * FROM invalid;
+    SELECT * FROM cleaned_normalized;
+    SELECT * FROM product_dimension;
+    SELECT * FROM time_dimension ORDER BY time_level DESC;
+    SELECT * FROM location_dimension ORDER BY level DESC;
+    SELECT * FROM final_fact;
+    SELECT * FROM data_cube;
 
 -- Call the procedures
-CALL truncate_all_tables();
-CALL data_extraction(); -- just to complete the list of procedures
-CALL data_mapping();
-CALL data_cleansing();
-CALL normalize_data();
+    CALL truncate_all_tables();
+    CALL data_extraction(); -- just to complete the list of procedures
+    CALL data_mapping();
+    CALL data_cleansing();
+    CALL normalize_data();
 
-CALL create_product_dimension();
-CALL populate_product_dimension();
-CALL create_time_dimension();
-CALL create_location_dimension();
-CALL populate_location_dimension();
-CALL create_final_fact_table();
-CALL create_data_cube();
+    CALL create_product_dimension();
+    CALL populate_product_dimension();
+    CALL create_time_dimension();
+    CALL create_location_dimension();
+    CALL populate_location_dimension();
+    CALL create_final_fact_table();
+    CALL create_data_cube();
 
 -- Testing for duplicates, both complete and only ids
-SELECT * FROM for_cleaning
-WHERE order_id = '150925';
+    SELECT * FROM for_cleaning
+    WHERE order_id = '150925';
 
 -- Checking for duplicates in cleaned table
-SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, purchase_address,
-			   CASE WHEN COUNT(*) > 1 THEN 'T'
-			   ELSE 'F' END
-		FROM cleaned
-		GROUP BY order_id, product, quantity_ordered, price_each, order_date, purchase_address
-		-- HAVING COUNT(*) > 1
-		ORDER BY order_id, product;
+    SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, purchase_address,
+            CASE WHEN COUNT(*) > 1 THEN 'T'
+            ELSE 'F' END
+    FROM cleaned
+    GROUP BY order_id, product, quantity_ordered, price_each, order_date, purchase_address
+    -- HAVING COUNT(*) > 1
+    ORDER BY order_id, product;
 
 -- Checking for duplicates in cleaned_normalized table
-SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, street, city, state, zip_code,
-			   CASE WHEN COUNT(*) > 1 THEN 'T'
-			   ELSE 'F' END
-		FROM cleaned_normalized
-		GROUP BY order_id, product, quantity_ordered, price_each, order_date, street, city, state, zip_code
-		-- HAVING COUNT(*) > 1
-		ORDER BY order_id, product;
+    SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, street, city, state, zip_code,
+            CASE WHEN COUNT(*) > 1 THEN 'T'
+            ELSE 'F' END
+    FROM cleaned_normalized
+    GROUP BY order_id, product, quantity_ordered, price_each, order_date, street, city, state, zip_code
+    -- HAVING COUNT(*) > 1
+    ORDER BY order_id, product;
 
--- All Tables Created
+-- Tables used for extraction
     CREATE TABLE IF NOT EXISTS landing_table 
     (
         order_id VARCHAR(255),
@@ -110,7 +110,7 @@ SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, st
 		parent_id varchar
 	);
 
--- Place code for creating product_dimension table here
+-- product_dimension table
     CREATE TABLE IF NOT EXISTS product_dimension
     (
 	    product_key VARCHAR(10),
@@ -123,7 +123,7 @@ SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, st
         PRIMARY KEY(product_key)
     );
 
--- Place code for creating location_dimension table here
+-- location_dimension table
 	CREATE TABLE IF NOT EXISTS location_dimension 
     (
 	    location_id VARCHAR(50) PRIMARY KEY, 
@@ -132,7 +132,7 @@ SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, st
 	    parent_id VARCHAR(50)               
 	);
 
--- Place code for creating final_fact table here
+-- final_fact table
     CREATE TABLE IF NOT EXISTS final_fact 
     (
         order_id INT,
@@ -144,16 +144,16 @@ SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, st
     );
 
 -- Procedure to truncate all relevant tables (for testing purposes)
-CREATE OR REPLACE PROCEDURE truncate_all_tables()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    DELETE FROM cleaned;
-    DELETE FROM for_cleaning;
-    DELETE FROM invalid;
-    DELETE FROM cleaned_normalized;
-END;
-$$;
+    CREATE OR REPLACE PROCEDURE truncate_all_tables()
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        DELETE FROM cleaned;
+        DELETE FROM for_cleaning;
+        DELETE FROM invalid;
+        DELETE FROM cleaned_normalized;
+    END;
+    $$;
 
 ----------------------------------------------------------------------------------------------------------------------
 -- [Start of the ETL process]
@@ -801,57 +801,73 @@ END;
 $$;
 
 --Function to insert a new product
-/*Note: I removed the trigger*/
+/*Note: The function here will not work if product dimension doesn't exist yet so you will have to run the etl once in order to store this in the postgresql.*/
+CREATE OR REPLACE FUNCTION handle_product_insert()
+RETURNS TRIGGER AS $$
+DECLARE
+    next_pk_id INTEGER;
+    next_pid_id INTEGER;
+BEGIN
+    -- Get the next PK_ and PID_ numbers
+    SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
+    INTO next_pk_id 
+    FROM product_dimension;
+    
+    SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
+    INTO next_pid_id 
+    FROM product_dimension;
+
+    -- Set the values in NEW
+    NEW.product_key := 'PK_' || LPAD(next_pk_id::TEXT, 4, '0');
+    NEW.product_id := 'PID_' || LPAD(next_pid_id::TEXT, 4, '0');
+    NEW.last_update_date := TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS');
+    NEW.active_status := 'Y';
+    NEW.action_flag := 'I';
+    
+    RETURN NEW;  -- Allow the modified INSERT to proceed
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger
+CREATE TRIGGER tr_handle_product_insert
+BEFORE INSERT
+ON product_dimension
+FOR EACH ROW
+EXECUTE FUNCTION handle_product_insert();
+
 -- Update the insert function to include all required fields
-CREATE OR REPLACE FUNCTION insert_new_product(
+CREATE OR REPLACE FUNCTION insert_new_product
+(
     in p_product_name VARCHAR,
     in p_price_each DECIMAL
 )
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    next_pk_id INTEGER;
-    next_pid_id INTEGER;
 BEGIN
+    -- Check if product already exists
     IF EXISTS (
         SELECT 1
         FROM product_dimension
-        WHERE LOWER(product_name) =LOWER(TRIM(p_product_name))
+        WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
         AND active_status = 'Y'
     ) THEN
         RAISE EXCEPTION 'Product % already exists!', p_product_name;
     ELSE
-        -- Get the next IDs
-        SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
-        INTO next_pk_id 
-        FROM product_dimension;
-        
-        SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
-        INTO next_pid_id 
-        FROM product_dimension;
-
-        -- Insert new product
-        INSERT INTO product_dimension (
-            product_key,
-            product_id,
+        INSERT INTO product_dimension 
+        (
             product_name,
-            price_each,
-            last_update_date,
-            active_status,
-            action_flag
-        ) VALUES (
-            'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
-            'PID_' || LPAD(next_pid_id::TEXT, 4, '0'),
+            price_each
+        ) 
+        VALUES 
+        (
             INITCAP(TRIM(p_product_name)),
-            p_price_each,
-            TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS'),
-            'Y',
-            'I'
+            p_price_each
         );
     END IF;
 END;
 $$;
+
 ---------------------------------------------------------------------------------------------------------------
 -- [Time Dimension]
 
@@ -890,8 +906,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE create_time_dimension()
 AS $$
 BEGIN
-DROP TABLE time_dimension;
-CREATE TABLE IF NOT EXISTS time_dimension 
+    DROP TABLE time_dimension;
+    CREATE TABLE IF NOT EXISTS time_dimension 
 	(
 		time_id varchar,
 		time_desc varchar,
@@ -899,8 +915,7 @@ CREATE TABLE IF NOT EXISTS time_dimension
 		parent_id varchar
 	);
 
-CALL populate_time_dimension();
-
+    CALL populate_time_dimension();
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1016,7 +1031,6 @@ BEGIN
 END;
 $$;
 
--- 
 ---------------------------------------------------------------------------------------------------------------
 -- [Location Dimension]
 
@@ -1182,11 +1196,12 @@ BEGIN
         location_id,
         SUM(total_sales) AS total_sales_sum
     FROM final_fact
-    GROUP BY
-        CUBE(product_id, time_id, location_id);
+    GROUP BY CUBE(product_id, time_id, location_id)
+	ORDER BY 
+		product_id NULLS FIRST,
+		time_id NULLS FIRST,
+		location_id NULLS FIRST;
 
     RAISE NOTICE 'data_cube table created and populated.';
 END;
 $$;
-
-

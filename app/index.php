@@ -23,6 +23,5 @@
         <div id="file-list"></div>
         <button type="submit">Upload</button>
     </form>
-    <div id="confirmation-message" class="confirmation-message"></div>
 </body>
 </html>
