@@ -88,11 +88,11 @@ if (!empty($filePathsString)) {
         fwrite($logHandle, "Files uploaded and processed successfully!\n");
         fwrite($logHandle, "Log Messages:\n");
 
-        // Fetch and log RAISE NOTICE messages
+        // Fetch and log RAISE NOTICE messages in real-time
         while (true) {
             $notification = $pdo->pgsqlGetNotify(PDO::FETCH_ASSOC, 1000);
             if ($notification) {
-                fwrite($logHandle, $notification['message'] . "\n");
+                fwrite($logHandle, $notification['payload'] . "\n");
                 fflush($logHandle); // Ensure the message is written immediately
             } else {
                 break; // Exit the loop if no more notifications
