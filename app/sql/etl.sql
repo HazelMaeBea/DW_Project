@@ -7,7 +7,7 @@ AS $$
 DECLARE
     file_path TEXT;
 BEGIN
-    RAISE NOTICE 'Starting data extraction...';
+    PERFORM log_message('Starting data extraction...');
 
     -- Clear all relevant tables only on initial data extraction
     CALL clear_all_tables();
@@ -48,7 +48,7 @@ BEGIN
 
 	CALL call_all_procedures();
 
-    RAISE NOTICE 'Data extraction completed.';
+    PERFORM log_message('Data extraction completed.');
 END;
 $$;
 
@@ -73,7 +73,7 @@ BEGIN
         DELETE FROM cleaned_normalized;
     END IF;
     
-    RAISE NOTICE 'All tables cleared.';
+    PERFORM log_message('All tables cleared.');
 END;
 $$;
 
@@ -99,7 +99,7 @@ CREATE OR REPLACE PROCEDURE data_mapping()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    RAISE NOTICE 'Starting data mapping...';
+    PERFORM log_message('Starting data mapping...');
 
 	CREATE TABLE IF NOT EXISTS cleaned (
     order_id INT,
@@ -128,7 +128,7 @@ BEGIN
     purchase_address VARCHAR(255)
 	);
     
-    RAISE NOTICE 'Tables created or verified.';
+    PERFORM log_message('Tables created or verified.');
 
     INSERT INTO invalid
     SELECT * FROM landing_table
@@ -145,7 +145,7 @@ BEGIN
         OR LOWER(order_date) = 'order date'
         OR LOWER(purchase_address) = 'purchase address';
     
-    RAISE NOTICE 'Invalid records inserted.';
+    PERFORM log_message('Invalid records inserted.');
 
     INSERT INTO cleaned
     SELECT
@@ -173,7 +173,7 @@ BEGIN
 		  -- to catch duplicates
       );
 
-    RAISE NOTICE 'Cleaned records inserted.';
+    PERFORM log_message('Cleaned records inserted.');
 
     -- Insert remaining values into for_cleaning table
     INSERT INTO for_cleaning
@@ -197,7 +197,7 @@ BEGIN
     AND LOWER(order_date) != 'order date'
     AND LOWER(purchase_address) != 'purchase address';
 
-    RAISE NOTICE 'Remaining records inserted into for_cleaning.';
+    PERFORM log_message('Remaining records inserted into for_cleaning.');
 END;
 $$;
 
@@ -206,14 +206,14 @@ CREATE OR REPLACE PROCEDURE data_cleansing()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    RAISE NOTICE 'Starting data cleansing...';
+    PERFORM log_message('Starting data cleansing...');
 
     -- Fix to 2 decimal points
     UPDATE for_cleaning
     SET price_each = TO_CHAR(ROUND(CAST(price_each AS NUMERIC), 2), 'FM999999999.00')
     WHERE price_each ~ '^[0-9]+(\.[0-9]{1,2})?$';
 
-    RAISE NOTICE 'Price each fixed to 2 decimal points.';
+    PERFORM log_message('Price each fixed to 2 decimal points.');
 
     -- Insert into CLEANED table one instance of complete duplicate
     INSERT INTO cleaned
@@ -236,7 +236,7 @@ BEGIN
         ORDER BY order_id, product
     );
 
-    RAISE NOTICE 'One (1) Copy Complete duplicates inserted into cleaned.';
+    PERFORM log_message('One (1) Copy Complete duplicates inserted into cleaned.');
 
     -- Insert into INVALID table other instance of complete duplicate
     INSERT INTO invalid
@@ -259,7 +259,7 @@ BEGIN
         ORDER BY order_id, product
     );
 
-    RAISE NOTICE 'Other Complete duplicates inserted into invalid.';
+    PERFORM log_message('Other Complete duplicates inserted into invalid.');
 
     -- Delete records from FOR_CLEANING after insertion to cleaned and invalid
     DELETE FROM for_cleaning
@@ -287,7 +287,7 @@ BEGIN
       )
     );
 
-    RAISE NOTICE 'Complete Duplicates deleted from for_cleaning.';
+    PERFORM log_message('Complete Duplicates deleted from for_cleaning.');
 
     -- Insert non-duplicate records from the for processing
     INSERT INTO cleaned
@@ -308,7 +308,7 @@ BEGIN
         )
     );
 
-    RAISE NOTICE 'Non-duplicate records inserted into cleaned.';
+    PERFORM log_message('Non-duplicate records inserted into cleaned.');
 
     -- Delete non-duplicate records from the for processing
     DELETE FROM for_cleaning
@@ -321,7 +321,7 @@ BEGIN
         )    
     );
 
-    RAISE NOTICE 'Non-duplicate records deleted from for_cleaning.';
+    PERFORM log_message('Non-duplicate records deleted from for_cleaning.');
 
     -- Handle duplicate IDs with different products or quantities
     WITH row_numbers AS (
@@ -340,7 +340,7 @@ BEGIN
     FROM row_numbers
     WHERE for_cleaning.ctid = row_numbers.ctid;
 
-    RAISE NOTICE 'Duplicate IDs with different products or quantities handled.';
+    PERFORM log_message('Duplicate IDs with different products or quantities handled.');
 
     -- Insert the updated records into the cleaned table
     INSERT INTO cleaned
@@ -353,7 +353,7 @@ BEGIN
         purchase_address
     FROM for_cleaning;
 
-    RAISE NOTICE 'Updated records inserted into cleaned.';
+    PERFORM log_message('Updated records inserted into cleaned.');
 
     -- Trim data in the cleaned table
     UPDATE cleaned
@@ -361,12 +361,12 @@ BEGIN
         product = TRIM(BOTH FROM product),
         purchase_address = TRIM(BOTH FROM purchase_address);
 
-    RAISE NOTICE 'Data trimmed in cleaned table.';
+    PERFORM log_message('Data trimmed in cleaned table.');
 
     -- Clean up
     TRUNCATE for_cleaning;
 
-    RAISE NOTICE 'Data cleansing completed.';
+    PERFORM log_message('Data cleansing completed.');
 END;
 $$;
 
@@ -375,7 +375,7 @@ CREATE OR REPLACE PROCEDURE normalize_data()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    RAISE NOTICE 'Starting data normalization...';
+    PERFORM log_message('Starting data normalization...');
 
     -- Create the cleaned_normalized table with appropriate data types
 	DROP TABLE cleaned_normalized;
@@ -396,7 +396,7 @@ BEGIN
         zip_code VARCHAR
     );
 
-    RAISE NOTICE 'cleaned_normalized table created or verified.';
+    PERFORM log_message('cleaned_normalized table created or verified.');
 
     -- Insert data into cleaned_normalized
     INSERT INTO cleaned_normalized 
@@ -418,14 +418,14 @@ BEGIN
         SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
     FROM cleaned;
 
-    RAISE NOTICE 'Data inserted into cleaned_normalized.';
+    PERFORM log_message('Data inserted into cleaned_normalized.');
 
     -- Truncate the cleaned table
     TRUNCATE TABLE cleaned;
 
-    RAISE NOTICE 'cleaned table truncated.';
+    PERFORM log_message('cleaned table truncated.');
 
-    RAISE NOTICE 'Data normalization completed.';
+    PERFORM log_message('Data normalization completed.');
 END;
 $$;
 ---------------------------------------------------------------------------------------------------------------
@@ -1018,7 +1018,7 @@ BEGIN
             cn.street || ', ' || cn.city || ', ' || cn.state || ' ' || cn.zip_code
         ));
 
-    RAISE NOTICE 'final_fact table created and populated.';
+    PERFORM log_message('final_fact table created and populated.');
 END;
 $$;
 
@@ -1044,6 +1044,6 @@ BEGIN
 		time_id NULLS FIRST,
 		location_id NULLS FIRST;
 
-    RAISE NOTICE 'data_cube table created and populated.';
+    PERFORM log_message('data_cube table created and populated.');
 END;
 $$;

@@ -33,7 +33,7 @@ if (!file_exists($uploadDir)) {
     mkdir($uploadDir, 0775, true); // Create directory if it doesn't exist
 }
 
-// Initialize an array to store file paths
+// Initialize an array to store file paths for the stored procedure
 $filePaths = [];
 
 // Check if files were uploaded
@@ -89,9 +89,14 @@ if (!empty($filePathsString)) {
         fwrite($logHandle, "Log Messages:\n");
 
         // Fetch and log RAISE NOTICE messages
-        while ($notification = $pdo->pgsqlGetNotify(PDO::FETCH_ASSOC, 1000)) {
-            fwrite($logHandle, $notification['message'] . "\n");
-            fflush($logHandle); // Ensure the message is written immediately
+        while (true) {
+            $notification = $pdo->pgsqlGetNotify(PDO::FETCH_ASSOC, 1000);
+            if ($notification) {
+                fwrite($logHandle, $notification['message'] . "\n");
+                fflush($logHandle); // Ensure the message is written immediately
+            } else {
+                break; // Exit the loop if no more notifications
+            }
         }
 
         // Check if data is loaded onto cleaned_normalized table
