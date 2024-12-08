@@ -82,6 +82,28 @@ BEGIN
         quantity_ordered INT,
         total_sales NUMERIC
     );
+
+-- data_cube table
+    CREATE TABLE IF NOT EXISTS data_cube 
+    (
+        product_id VARCHAR,
+        location_id VARCHAR, 
+        time_id VARCHAR, 
+        quantity_ordered INT,
+        total_sales NUMERIC
+    );
+
+-- sliced_data_cube table
+    CREATE TABLE IF NOT EXISTS sliced_data_cube 
+    (
+        product_id VARCHAR,
+        location_id VARCHAR, 
+        time_id VARCHAR, 
+        quantity_ordered INT,
+        total_sales NUMERIC
+    );
+
+    PERFORM log_message('All tables initially created');
 END;
 $$;
 
@@ -165,7 +187,7 @@ BEGIN
     DELETE FROM location_dimension;
     DELETE FROM final_fact;
     DELETE FROM data_cube;
-    DELETE FROM sliced_cube;
+    DELETE FROM sliced_data_cube;
 
     PERFORM log_message('All tables cleared.');
 END;
@@ -1129,7 +1151,7 @@ $$;
 
 ---------------------------------------------------------------------------------------------------------------
 -- FOR SLICING
----------------------------------------------------------------------------------------------------------------
+
 -- [Extract Grains Location]
 -- Procedure to extract the grains of the location based on 2 parameters:
 -- extract_grains_loc(Grain level, Highest Parent_ID)
