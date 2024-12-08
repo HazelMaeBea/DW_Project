@@ -87,6 +87,14 @@ $$;
 
 Call create_all_tables();
 
+CREATE OR REPLACE FUNCTION log_message(message TEXT) RETURNS VOID 
+LANGUAGE plpgsql
+AS $$
+    BEGIN
+        PERFORM pg_notify('log_channel', message);
+    END;
+$$;
+
 ---------------------------------------------------------------------------------------------------------------
 -- [Start of the ETL process]
 
