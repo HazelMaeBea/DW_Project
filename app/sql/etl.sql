@@ -1310,6 +1310,7 @@ $BODY$;
 -- Procedure to slice the data cube based on 2 parameters for time and location
 -- specific products can be found using a where clause instead
 -- Procedure works by taking in a top parent time or a top parent location, these parameters may be null
+-- Output gets inserted into sliced_cube table
 CREATE OR REPLACE PROCEDURE slice_cube(IN top_node_time text, IN top_node_loc text)
 	LANGUAGE 'plpgsql'
 	AS $$
