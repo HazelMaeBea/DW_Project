@@ -1,3 +1,93 @@
+CREATE OR REPLACE PROCEDURE create_all_tables()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    CREATE TABLE IF NOT EXISTS landing_table 
+    (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+    );
+
+    CREATE TABLE IF NOT EXISTS cleaned 
+    (
+        order_id INT,
+        product VARCHAR(255),
+        quantity_ordered INT,
+        price_each DECIMAL(10, 2),
+        order_date TIMESTAMP,
+        purchase_address VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS for_cleaning 
+    (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS invalid 
+    (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS time_dimension 
+	(
+		time_id varchar,
+		time_desc varchar,
+		time_level int,
+		parent_id varchar
+	);
+
+-- product_dimension table
+    CREATE TABLE IF NOT EXISTS product_dimension
+    (
+	    product_key VARCHAR(10),
+        product_id VARCHAR(10),
+        product_name VARCHAR(100),
+        price_each DECIMAL(10,2),
+        last_update_date TIMESTAMP,
+        active_status CHAR(1),
+        action_flag CHAR(1),
+        PRIMARY KEY(product_key)
+    );
+
+-- location_dimension table
+	CREATE TABLE IF NOT EXISTS location_dimension 
+    (
+	    location_id VARCHAR(50) PRIMARY KEY, 
+	    location_name VARCHAR(255),          
+	    level INT,                           
+	    parent_id VARCHAR(50)               
+	);
+
+-- final_fact table
+    CREATE TABLE IF NOT EXISTS final_fact 
+    (
+        order_id INT,
+        product_id VARCHAR,
+        location_id VARCHAR, 
+        time_id VARCHAR, 
+        quantity_ordered INT,
+        total_sales NUMERIC
+    );
+END;
+$$;
+
+Call create_all_tables();
+
+---------------------------------------------------------------------------------------------------------------
 -- [Start of the ETL process]
 
 -- Procedure to handle data extraction from uploaded files
@@ -610,6 +700,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create the trigger that only fires for price changes
+DROP TRIGGER IF EXISTS tr_handle_product_price_change ON product_dimension;
 CREATE TRIGGER tr_handle_product_price_change
 BEFORE UPDATE OF price_each
 ON product_dimension
@@ -670,7 +761,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create the trigger
+-- Trigger to handle product insert
+DROP TRIGGER IF EXISTS tr_handle_product_insert ON product_dimension;
 CREATE TRIGGER tr_handle_product_insert
 BEFORE INSERT
 ON product_dimension
@@ -813,6 +905,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create the trigger that only fires for time inserts
+DROP TRIGGER IF EXISTS tr_handle_time_insert ON time_dimension;
 CREATE TRIGGER tr_handle_time_insert
 BEFORE INSERT
 ON time_dimension
