@@ -1130,3 +1130,239 @@ BEGIN
     PERFORM log_message('data_cube table created and populated.');
 END;
 $$;
+
+---------------------------------------------------------------------------------------------------------------
+-- FOR SLICING
+---------------------------------------------------------------------------------------------------------------
+-- [Extract Grains Location]
+-- Procedure to extract the grains of the location based on 2 parameters:
+-- extract_grains_loc(Grain level, Highest Parent_ID)
+DROP PROCEDURE IF EXISTS extract_grains_loc(integer, varchar);
+CREATE OR REPLACE PROCEDURE public.extract_grains_loc(
+	IN grain integer,
+	IN top_node varchar)
+LANGUAGE 'plpgsql'
+AS $$
+
+DECLARE
+	top_level INT := (SELECT level FROM location_dimension WHERE location_id = top_node);
+	counter INT := 4;
+BEGIN
+	RAISE NOTICE 'top_level is %', top_level;
+	DROP TABLE IF EXISTS locationResult;
+	CREATE TEMP TABLE locationResult AS
+    SELECT * FROM location_dimension WHERE 1=2;
+
+	-- If top node is null, inserts the grains year
+	IF top_node IS NULL THEN
+		INSERT INTO locationResult
+		SELECT * FROM location_dimension ld WHERE ld.level = 3;
+
+	-- If grain is null, inserts all the records under the top_node 
+	ELSIF top_node IS NOT NULL AND grain IS NULL THEN
+		IF counter = 4 THEN
+			INSERT INTO locationResult
+			SELECT * FROM location_dimension WHERE parent_id = top_node;
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+		IF counter = 3 THEN
+			INSERT INTO locationResult
+			SELECT * FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id = top_node);
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+		IF counter = 2 THEN
+			INSERT INTO locationResult
+			SELECT * FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id = top_node));
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+		IF counter = 1 THEN
+			INSERT INTO locationResult
+			SELECT * FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id = top_node)));
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+	
+	-- Catch invalid parameter inputs
+	ELSIF grain > top_level THEN
+		RAISE NOTICE 'GRAIN IS BIGGER THAN TOP_NODE';
+
+	-- If grain = top_level, insert the record itself
+	ELSIF grain = top_level THEN
+		INSERT INTO locationResult
+        SELECT * FROM location_dimension WHERE location_id = top_node;
+		RAISE NOTICE 'GRAIN IS EQUAL TO TOP_NODE';
+
+	-- If grain is lower than top_level, then properly insert the requested grain underneath the top_node
+	ELSE
+		IF (top_level - grain) = 1 THEN
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 1';
+			INSERT INTO locationResult
+			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id = top_node;
+			
+		ELSIF (top_level - grain) = 2 THEN
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 2'; 
+			INSERT INTO locationResult
+			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM location_dimension t2 WHERE t2.parent_id = top_node);
+			
+		ELSIF (top_level - grain) = 3 THEN
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 3';
+			INSERT INTO locationResult
+			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM location_dimension t2 WHERE t2.parent_id IN (SELECT t3.location_id FROM location_dimension t3 WHERE t3.parent_id = top_node ));
+		ELSE
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 4';
+			INSERT INTO locationResult
+			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM location_dimension t2 WHERE t2.parent_id IN (SELECT t3.location_id FROM location_dimension t3 WHERE t3.parent_id IN (SELECT t4.location_id FROM location_dimension t4 WHERE t4.parent_id = top_node)));
+		END IF;
+	END IF;
+END;
+$$;
+---------------------------------------------------------------------------------------------------------------
+-- [EXTRACT GRAINS TIME]
+-- Procedure to extract the grains of time based on 2 parameters:
+-- extract_grains_time(Grain level, Highest Parent_ID)
+CREATE OR REPLACE PROCEDURE public.extract_grains_time(
+	IN grain integer,
+	IN top_node text)
+LANGUAGE 'plpgsql'
+AS $BODY$
+
+DECLARE
+	top_level INT := (SELECT time_level FROM time_dimension WHERE time_id = top_node);
+	counter INT := 4;
+
+BEGIN
+	RAISE NOTICE 'STARTING TOP_LEVEL IS %', top_level;
+	DROP TABLE IF EXISTS timeResult;
+	CREATE TEMP TABLE timeResult AS
+    SELECT * FROM time_dimension WHERE 1=2;
+
+	-- If top node is null, inserts the grains year
+	IF top_node IS NULL AND grain IS NOT NULL THEN
+		INSERT INTO timeResult
+		SELECT * FROM time_dimension WHERE time_level = 4;
+
+	-- If grain is null, inserts all the records under the top_node 
+	ELSIF top_node IS NOT NULL AND grain IS NULL THEN
+		IF counter = 4 THEN
+			INSERT INTO timeResult
+			SELECT * FROM time_dimension WHERE  parent_id = top_node;
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+		IF counter = 3 THEN
+			INSERT INTO timeResult
+			SELECT * FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id = top_node);
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+		IF counter = 2 THEN
+			INSERT INTO timeResult
+			SELECT * FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id = top_node));
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+		IF counter = 1 THEN
+			INSERT INTO timeResult
+			SELECT * FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id = top_node)));
+			counter = counter - 1;
+			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+		END IF;
+
+	-- Catch invalid parameter inputs
+	ELSIF grain > top_level THEN
+		RAISE NOTICE 'GRAIN IS BIGGER THAN TOP_NODE';
+
+	-- If grain = top_level, insert the record itself
+	ELSIF grain = top_level THEN
+		INSERT INTO timeResult
+        SELECT * FROM time_dimension WHERE time_id = top_node;
+		RAISE NOTICE 'GRAIN IS EQUAL TO TOP_NODE';
+
+	-- If grain is lower than top_level, then properly insert the requested grain underneath the top_node
+	ELSE
+		IF (top_level - grain) = 1 THEN
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 1';
+			INSERT INTO timeResult
+			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id = top_node;
+			
+		ELSIF (top_level - grain) = 2 THEN
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 2'; 
+			INSERT INTO timeResult
+			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time_dimension t2 WHERE t2.parent_id = top_node);
+			
+		ELSIF (top_level - grain) = 3 THEN
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 3';
+			INSERT INTO timeResult
+			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time_dimension t2 WHERE t2.parent_id IN (SELECT t3.time_id FROM time_dimension t3 WHERE t3.parent_id = top_node ));
+		ELSE
+			RAISE NOTICE 'RUN SUCCESSFULLY IN 4';
+			INSERT INTO timeResult
+			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time_dimension t2 WHERE t2.parent_id IN (SELECT t3.time_id FROM time_dimension t3 WHERE t3.parent_id IN (SELECT t4.time_id FROM time_dimension t4 WHERE t4.parent_id = top_node)));
+		END IF;
+	END IF;
+END;
+$BODY$;
+---------------------------------------------------------------------------------------------------------------
+--[Slice Cube]
+-- Procedure to slice the data cube based on 2 parameters for time and location
+-- specific products can be found using a where clause instead
+-- Procedure works by taking in a top parent time or a top parent location, these parameters may be null
+CREATE OR REPLACE PROCEDURE slice_cube(IN top_node_time text, IN top_node_loc text)
+	LANGUAGE 'plpgsql'
+	AS $$
+	BEGIN
+	DROP TABLE IF EXISTS sliced_cube;
+	CREATE TABLE IF NOT EXISTS sliced_cube(
+			product_id varchar,
+			time_id varchar,
+			location_id varchar,
+			total_sales_sum numeric
+			);
+	
+		IF top_node_time IS NULL AND top_node_loc IS NULL THEN
+			INSERT INTO sliced_cube SELECT * FROM data_cube;
+			
+		ELSIF (top_node_time IS NOT NULL AND top_node_loc IS NULL) THEN
+			CALL extract_grains_time(0, top_node_time);
+			INSERT INTO sliced_cube
+				SELECT
+					product_id,
+					time_id,
+					location_id,
+					SUM(total_sales) as total_sales_sum
+				FROM final_fact
+				GROUP BY
+					CUBE(product_id, time_id, location_id)
+				HAVING time_id IN (SELECT time_id FROM timeResult);
+		ELSIF (top_node_time IS NULL AND top_node_loc IS NOT NULL) THEN
+			CALL extract_grains_loc(0, top_node_loc);
+			INSERT INTO sliced_cube
+				SELECT
+					product_id,
+					time_id,
+					location_id,
+					SUM(total_sales) as total_sales_sum
+				FROM final_fact
+				GROUP BY
+					CUBE(product_id, time_id, location_id)
+				HAVING location_id IN (SELECT location_id FROM locationResult);
+		ELSE
+			CALL extract_grains_time(NULL, top_node_time);
+			CALL extract_grains_loc(NULL, top_node_loc);
+			INSERT INTO sliced_cube
+				SELECT
+					product_id,
+					time_id,
+					location_id,
+					SUM(total_sales) as total_sales_sum
+				FROM final_fact
+				GROUP BY
+					CUBE(product_id, time_id, location_id)
+				HAVING time_id IN (SELECT time_id FROM timeResult) AND
+					   location_id IN (SELECT location_id FROM locationResult);
+		END IF;
+	END;
+	$$;
