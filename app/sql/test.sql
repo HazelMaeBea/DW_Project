@@ -1,214 +1,156 @@
-TRUNCATE TABLE landing;
-TRUNCATE TABLE cleaned;
-TRUNCATE TABLE for_cleaning;
-TRUNCATE TABLE invalid;
+-- [For Testing Purposes]
 
-SELECT * FROM landing_table;
-SELECT * FROM cleaned;
-SELECT * FROM for_cleaning;
-SELECT * FROM invalid;
+-- Truncate all tables
+    TRUNCATE TABLE landing_table;
+    TRUNCATE TABLE cleaned;
+    TRUNCATE TABLE for_cleaning;
+    TRUNCATE TABLE invalid;
+    TRUNCATE TABLE cleaned_normalized;
+    TRUNCATE TABLE product_dimension;
+    TRUNCATE TABLE time_dimension;
+    TRUNCATE TABLE location_dimension;
+    TRUNCATE TABLE final_fact;
+    TRUNCATE TABLE data_cube;
 
-CREATE TABLE IF NOT EXISTS landing_table (
-    order_id VARCHAR(255),
-    product VARCHAR(255),
-    quantity_ordered VARCHAR(255),
-    price_each VARCHAR(255),
-    order_date VARCHAR(255),
-    purchase_address VARCHAR(255)
-);
-
-CREATE TABLE IF NOT EXISTS cleaned (
-    order_id INT,
-    product VARCHAR(255),
-    quantity_ordered INT,
-    price_each DECIMAL(10, 2),
-    order_date TIMESTAMP,
-    purchase_address VARCHAR(255)
-);
-
-CREATE TABLE IF NOT EXISTS for_cleaning (
-    order_id VARCHAR(255),
-    product VARCHAR(255),
-    quantity_ordered VARCHAR(255),
-    price_each VARCHAR(255),
-    order_date VARCHAR(255),
-    purchase_address VARCHAR(255)
-);
-
-CREATE TABLE IF NOT EXISTS invalid (
-    order_id VARCHAR(255),
-    product VARCHAR(255),
-    quantity_ordered VARCHAR(255),
-    price_each VARCHAR(255),
-    order_date VARCHAR(255),
-    purchase_address VARCHAR(255)
-);
-
--- Stored procedure for data mapping
-CREATE OR REPLACE PROCEDURE data_mapping()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- mapping logic
-    INSERT INTO for_cleaning
+-- Select statements
     SELECT * FROM landing_table;
-    
-    -- pag may null, invalid
-    INSERT INTO invalid
-    SELECT * FROM landing_table
-    WHERE order_id IS NULL 
-        OR product IS NULL 
-        OR quantity_ordered IS NULL
-        OR price_each IS NULL
-        OR order_date IS NULL 
-        OR purchase_address IS NULL
-        OR LOWER(order_id) = 'order id'
-        OR LOWER(product) = 'product name'
-        OR LOWER(quantity_ordered) = 'quantity ordered'
-        OR LOWER(price_each) = 'price each'
-        OR LOWER(order_date) = 'order date'
-        OR LOWER(purchase_address) = 'purchase address';
-    
-    -- Insert into cleaned table
-    INSERT INTO cleaned
-    SELECT
-        order_id::INT,
-        product, --is already type varchar
-        quantity_ordered::INT,
-        price_each::DECIMAL(10, 2),
-        TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date, --will not insert invalid timestamp
-        purchase_address
-    FROM landing_table a
-    WHERE order_id IS NOT NULL
-      AND product IS NOT NULL
-      AND quantity_ordered IS NOT NULL
-      AND price_each IS NOT NULL
-      AND order_date IS NOT NULL
-      AND purchase_address IS NOT NULL
-      AND quantity_ordered ~ '^[1-9][0-9]*$' -- Checks if quantity_ordered is a positive integer
-      AND price_each ~ '^[0-9]+\.[0-9]{2}$' -- Checks if price_each is a valid decimal number
-      AND NOT EXISTS (
-          SELECT 1
-          FROM landing_table b
-          WHERE a.order_id = b.order_id
-          GROUP BY b.order_id
-          HAVING COUNT(*) > 1
-		  -- to catch duplicates
-      );
-
-    -- Insert remaining values into for_cleaning table
-    INSERT INTO for_cleaning
-    SELECT *
-    FROM landing_table a
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM cleaned b
-        WHERE a.order_id = b.order_id::VARCHAR
-    )
-    AND order_id IS NOT NULL 
-    AND product IS NOT NULL 
-    AND quantity_ordered IS NOT NULL
-    AND price_each IS NOT NULL
-    AND order_date IS NOT NULL 
-    AND purchase_address IS NOT NULL
-    AND LOWER(order_id) != 'order id'
-    AND LOWER(product) != 'product name'
-    AND LOWER(quantity_ordered) != 'quantity ordered'
-    AND LOWER(price_each) != 'price each'
-    AND LOWER(order_date) != 'order date'
-    AND LOWER(purchase_address) != 'purchase address';
-END;
-$$;
-
--- Stored procedure for data versioning
-CREATE OR REPLACE PROCEDURE data_versioning()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- Add versioning logic here i have no clue pa
-END;
-$$;
-
--- Stored procedure for data cleansing
-CREATE OR REPLACE PROCEDURE data_cleansing()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- Fix to 2 decimal points
-    UPDATE for_cleaning
-    SET price_each = TO_CHAR(ROUND(CAST(price_each AS NUMERIC), 2), 'FM999999999.00')
-    WHERE price_each ~ '^[0-9]+(\.[0-9]{1,2})?$';
-
-    -- Handle complete duplicates
-    INSERT INTO cleaned
-    SELECT DISTINCT ON (order_id, product, quantity_ordered, price_each, order_date, purchase_address)
-           order_id::INT,
-           product,
-           quantity_ordered::INT,
-           price_each::DECIMAL(10, 2),
-           TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date,
-           purchase_address
-    FROM for_cleaning;
-
-    INSERT INTO invalid
-    SELECT order_id::INT,
-           product,
-           quantity_ordered::INT,
-           price_each::DECIMAL(10, 2),
-           TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date,
-           purchase_address
-    FROM for_cleaning
-    EXCEPT
-    SELECT order_id::INT,
-           product,
-           quantity_ordered::INT,
-           price_each::DECIMAL(10, 2),
-           TO_TIMESTAMP(order_date, 'MM/DD/YYYY HH24:MI:SS PM') AS order_date,
-           purchase_address
-    FROM cleaned;
-
-    DELETE FROM for_cleaning
-    WHERE (order_id, product, quantity_ordered, price_each, order_date, purchase_address) IN (
-        SELECT order_id, product, quantity_ordered, price_each, order_date, purchase_address
-        FROM cleaned
-        UNION
-        SELECT order_id, product, quantity_ordered, price_each, order_date, purchase_address
-        FROM invalid
-    );
-
-END;
-$$;
-
--- Normalization logic
-CREATE OR REPLACE FUNCTION normalize_data() RETURNS VOID AS 
-LANGUAGE plpgsql
-$$
-BEGIN
-    -- Example normalization logic
-    INSERT INTO cleaned_normalized 
-        (order_id, product, quantity_ordered, price_each, order_date, month, day, year, hour, minute, number, street, city, state, zip_code)
-    SELECT 
-        order_id, 
-        product, 
-        quantity_ordered, 
-        price_each, 
-        order_date, 
-        EXTRACT(MONTH FROM order_date) AS month, 
-        EXTRACT(DAY FROM order_date) AS day, 
-        EXTRACT(YEAR FROM order_date) AS year, 
-        EXTRACT(HOUR FROM order_date) AS hour, 
-        EXTRACT(MINUTE FROM order_date) AS minute, 
-        SPLIT_PART(purchase_address, ' ', 1) AS number, 
-        SPLIT_PART(purchase_address, ' ', 2) AS street, 
-        SPLIT_PART(purchase_address, ',', 2) AS city, 
-        SPLIT_PART(purchase_address, ',', 3) AS state, 
-        SPLIT_PART(purchase_address, ' ', 4) AS zip_code
-    FROM cleaned;
-END;
-$$;
+    SELECT * FROM cleaned;
+    SELECT * FROM for_cleaning;
+    SELECT * FROM invalid;
+    SELECT * FROM cleaned_normalized;
+    SELECT * FROM product_dimension;
+    SELECT * FROM time_dimension ORDER BY time_level DESC;
+    SELECT * FROM location_dimension ORDER BY level DESC;
+    SELECT * FROM final_fact;
+    SELECT * FROM data_cube;
 
 -- Call the procedures
-CALL data_mapping();
-CALL data_versioning();
-CALL data_cleansing();
-CALL normalize_data();
+    CALL truncate_all_tables();
+    CALL data_extraction(); -- just to complete the list of procedures
+    CALL data_mapping();
+    CALL data_cleansing();
+    CALL normalize_data();
+
+    CALL create_product_dimension();
+    CALL populate_product_dimension();
+    CALL create_time_dimension();
+    CALL create_location_dimension();
+    CALL populate_location_dimension();
+    CALL create_final_fact_table();
+    CALL create_data_cube();
+
+-- Testing for duplicates, both complete and only ids
+    SELECT * FROM for_cleaning
+    WHERE order_id = '150925';
+
+-- Checking for duplicates in cleaned table
+    SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, purchase_address,
+            CASE WHEN COUNT(*) > 1 THEN 'T'
+            ELSE 'F' END
+    FROM cleaned
+    GROUP BY order_id, product, quantity_ordered, price_each, order_date, purchase_address
+    -- HAVING COUNT(*) > 1
+    ORDER BY order_id, product;
+
+-- Checking for duplicates in cleaned_normalized table
+    SELECT DISTINCT(order_id), product, quantity_ordered, price_each, order_date, street, city, state, zip_code,
+            CASE WHEN COUNT(*) > 1 THEN 'T'
+            ELSE 'F' END
+    FROM cleaned_normalized
+    GROUP BY order_id, product, quantity_ordered, price_each, order_date, street, city, state, zip_code
+    -- HAVING COUNT(*) > 1
+    ORDER BY order_id, product;
+
+-- Tables used for extraction
+    CREATE TABLE IF NOT EXISTS landing_table 
+    (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+    );
+
+    CREATE TABLE IF NOT EXISTS cleaned 
+    (
+        order_id INT,
+        product VARCHAR(255),
+        quantity_ordered INT,
+        price_each DECIMAL(10, 2),
+        order_date TIMESTAMP,
+        purchase_address VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS for_cleaning 
+    (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS invalid 
+    (
+        order_id VARCHAR(255),
+        product VARCHAR(255),
+        quantity_ordered VARCHAR(255),
+        price_each VARCHAR(255),
+        order_date VARCHAR(255),
+        purchase_address VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS time_dimension 
+	(
+		time_id varchar,
+		time_desc varchar,
+		time_level int,
+		parent_id varchar
+	);
+
+-- product_dimension table
+    CREATE TABLE IF NOT EXISTS product_dimension
+    (
+	    product_key VARCHAR(10),
+        product_id VARCHAR(10),
+        product_name VARCHAR(100),
+        price_each DECIMAL(10,2),
+        last_update_date TIMESTAMP,
+        active_status CHAR(1),
+        action_flag CHAR(1),
+        PRIMARY KEY(product_key)
+    );
+
+-- location_dimension table
+	CREATE TABLE IF NOT EXISTS location_dimension 
+    (
+	    location_id VARCHAR(50) PRIMARY KEY, 
+	    location_name VARCHAR(255),          
+	    level INT,                           
+	    parent_id VARCHAR(50)               
+	);
+
+-- final_fact table
+    CREATE TABLE IF NOT EXISTS final_fact 
+    (
+        order_id INT,
+        product_id VARCHAR,
+        location_id VARCHAR, 
+        time_id VARCHAR, 
+        quantity_ordered INT,
+        total_sales NUMERIC
+    );
+
+-- Procedure to truncate all relevant tables (for testing purposes)
+    CREATE OR REPLACE PROCEDURE truncate_all_tables()
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        DELETE FROM cleaned;
+        DELETE FROM for_cleaning;
+        DELETE FROM invalid;
+        DELETE FROM cleaned_normalized;
+    END;
+    $$;
