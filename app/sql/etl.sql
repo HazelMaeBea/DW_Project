@@ -109,6 +109,43 @@ $$;
 
 Call create_all_tables();
 
+-- Procedure to clear all relevant tables
+CREATE OR REPLACE PROCEDURE clear_all_tables()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM landing_table;
+    DELETE FROM cleaned;
+    DELETE FROM for_cleaning;
+    DELETE FROM invalid;
+    DELETE FROM cleaned_normalized;
+    DELETE FROM product_dimension;
+    DELETE FROM time_dimension;
+    DELETE FROM location_dimension;
+    DELETE FROM final_fact;
+    DELETE FROM data_cube;
+    DELETE FROM sliced_data_cube;
+
+    PERFORM log_message('All tables cleared.');
+END;
+$$;
+
+-- Procedure to call all necessary procedures
+CREATE OR REPLACE PROCEDURE call_all_procedures()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    CALL data_mapping();
+    CALL data_cleansing();
+    CALL normalize_data();
+    CALL create_product_dimension();
+    CALL create_location_dimension();
+    CALL create_time_dimension();
+    CALL create_final_fact_table();
+    CALL create_data_cube();
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION log_message(message TEXT) RETURNS VOID 
 LANGUAGE plpgsql
 AS $$
@@ -117,10 +154,9 @@ AS $$
     END;
 $$;
 
----------------------------------------------------------------------------------------------------------------
 -- [Start of the ETL process]
-
--- Procedure to handle data extraction from uploaded files
+---------------------------------------------------------------------------------------------------------------
+-- Stored Procedure for data extraction
 CREATE OR REPLACE PROCEDURE data_extraction(file_paths TEXT)
 LANGUAGE plpgsql
 AS $$
@@ -172,42 +208,6 @@ BEGIN
 END;
 $$;
 
--- Procedure to clear all relevant tables
-CREATE OR REPLACE PROCEDURE clear_all_tables()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    DELETE FROM landing_table;
-    DELETE FROM cleaned;
-    DELETE FROM for_cleaning;
-    DELETE FROM invalid;
-    DELETE FROM cleaned_normalized;
-    DELETE FROM product_dimension;
-    DELETE FROM time_dimension;
-    DELETE FROM location_dimension;
-    DELETE FROM final_fact;
-    DELETE FROM data_cube;
-    DELETE FROM sliced_data_cube;
-
-    PERFORM log_message('All tables cleared.');
-END;
-$$;
-
--- Procedure to call all necessary procedures
-CREATE OR REPLACE PROCEDURE call_all_procedures()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    CALL data_mapping();
-    CALL data_cleansing();
-    CALL normalize_data();
-    CALL create_product_dimension();
-    CALL create_location_dimension();
-    CALL create_time_dimension();
-    CALL create_final_fact_table();
-    CALL create_data_cube();
-END;
-$$;
 ----------------------------------------------------------------------------------------------------------------------
 -- Stored procedure for data mapping
 CREATE OR REPLACE PROCEDURE data_mapping()
@@ -316,6 +316,7 @@ BEGIN
 END;
 $$;
 
+----------------------------------------------------------------------------------------------------------------------
 -- Stored procedure for data cleansing
 CREATE OR REPLACE PROCEDURE data_cleansing()
 LANGUAGE plpgsql
@@ -485,7 +486,8 @@ BEGIN
 END;
 $$;
 
--- Normalization logic
+---------------------------------------------------------------------------------------------------------------
+-- Stored procedure for data normalization
 CREATE OR REPLACE PROCEDURE normalize_data()
 LANGUAGE plpgsql
 AS $$
@@ -543,9 +545,9 @@ BEGIN
     PERFORM log_message('Data normalization completed.');
 END;
 $$;
----------------------------------------------------------------------------------------------------------------
--- [Product Dimension]
 
+-- [Product Dimension]
+---------------------------------------------------------------------------------------------------------------
 -- Stored procedure for data versioning
 CREATE OR REPLACE PROCEDURE populate_product_dimension()
 LANGUAGE plpgsql
@@ -677,8 +679,7 @@ BEGIN
 END;
 $$;
 
---Function to change the product price
-/*Note: The function here will not work if product dimension doesn't exist yet so you will have to run the etl once in order to store this in the postgresql.*/
+-- Function to change the product price
 CREATE OR REPLACE FUNCTION handle_product_price_change()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -758,7 +759,7 @@ BEGIN
 END;
 $$;
 
---Function to insert a new product
+-- Function to insert a new product
 CREATE OR REPLACE FUNCTION insert_new_product(
     in p_product_name VARCHAR,
     in p_price_each DECIMAL
@@ -809,10 +810,8 @@ BEGIN
 END;
 $$;
 
-
----------------------------------------------------------------------------------------------------------------
 -- [Time Dimension]
-
+---------------------------------------------------------------------------------------------------------------
 -- Procedure to populate time dimension
 CREATE OR REPLACE PROCEDURE populate_time_dimension() 
 AS $$	
@@ -923,7 +922,7 @@ EXECUTE FUNCTION handle_time_insert();
 -- Update the insert function to include all required fields
 CREATE OR REPLACE FUNCTION insert_new_time
 (
-    in p_order_date TIMESTAMP
+    IN p_order_date TIMESTAMP
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -974,9 +973,8 @@ BEGIN
 END;
 $$;
 
----------------------------------------------------------------------------------------------------------------
 -- [Location Dimension]
-
+---------------------------------------------------------------------------------------------------------------
 -- Procedure to populate location dimension
 CREATE OR REPLACE PROCEDURE populate_location_dimension()
 LANGUAGE plpgsql
@@ -1075,9 +1073,9 @@ BEGIN
 END;
 $$;
 
----------------------------------------------------------------------------------------------------------------
 -- [Final Fact Table]
-
+---------------------------------------------------------------------------------------------------------------
+-- Procedure to create the final fact table
 CREATE OR REPLACE PROCEDURE create_final_fact_table()
 LANGUAGE plpgsql
 AS $$
@@ -1123,7 +1121,9 @@ BEGIN
 END;
 $$;
 
-
+-- [Data Cube]
+---------------------------------------------------------------------------------------------------------------
+-- Procedure to create the data cube
 CREATE OR REPLACE PROCEDURE create_data_cube()
 LANGUAGE plpgsql
 AS $$
@@ -1149,16 +1149,15 @@ BEGIN
 END;
 $$;
 
+-- [For Slicing]
 ---------------------------------------------------------------------------------------------------------------
--- FOR SLICING
-
 -- [Extract Grains Location]
 -- Procedure to extract the grains of the location based on 2 parameters:
 -- extract_grains_loc(Grain level, Highest Parent_ID)
 DROP PROCEDURE IF EXISTS extract_grains_loc(integer, varchar);
 CREATE OR REPLACE PROCEDURE public.extract_grains_loc(
-	IN grain integer,
-	IN top_node varchar)
+	IN grain INTEGER,
+	IN top_node VARCHAR)
 LANGUAGE 'plpgsql'
 AS $$
 
@@ -1237,8 +1236,9 @@ BEGIN
 	END IF;
 END;
 $$;
----------------------------------------------------------------------------------------------------------------
+
 -- [EXTRACT GRAINS TIME]
+---------------------------------------------------------------------------------------------------------------
 -- Procedure to extract the grains of time based on 2 parameters:
 -- extract_grains_time(Grain level, Highest Parent_ID)
 CREATE OR REPLACE PROCEDURE public.extract_grains_time(
@@ -1323,8 +1323,9 @@ BEGIN
 	END IF;
 END;
 $BODY$;
+
+-- [Slice Cube]
 ---------------------------------------------------------------------------------------------------------------
---[Slice Cube]
 -- Procedure to slice the data cube based on 2 parameters for time and location
 -- specific products can be found using a where clause instead
 -- Procedure works by taking in a top parent time or a top parent location, these parameters may be null
