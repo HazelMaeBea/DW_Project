@@ -51,6 +51,20 @@ function submitForm(event) {
 		.then((data) => {
 			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on success
 			alert(data.message); // Display the response message in a popup
+			if (
+				data.message.includes(
+					"Files uploaded and processed successfully!"
+				)
+			) {
+				// Log the message to message.log
+				fetch("log_message.php", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ message: data.message }),
+				});
+			}
 		})
 		.catch((error) => {
 			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on error

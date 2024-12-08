@@ -1,5 +1,5 @@
 <?php
-// Database connection settings
+// Database connection settings (Bea's local settings)
 $host = "localhost";
 $dbname = "dw_project";
 $user = "postgres";
@@ -23,7 +23,7 @@ try {
         $responseMessage = "Database connection failed.";
     }
 } catch (PDOException $e) {
-    error_log("Database connection error: " . $e->getMessage(), 3, __DIR__ . '/error.log');
+    error_log("Database connection error: " . $e->getMessage() . "\n\n", 3, __DIR__ . '/error.log');
     die(json_encode(['message' => "Could not connect to the database: " . $e->getMessage()]));
 }
 
@@ -58,17 +58,24 @@ if (!empty($_FILES['csv_files']['name'][0])) {
 // Convert file paths to a comma-separated string
 $filePathsString = implode(',', $filePaths);
 
-// Create a temporary table to capture RAISE NOTICE messages
-$pdo->exec("CREATE TEMP TABLE temp_log (message TEXT)");
-
-// Create a custom function to log messages to the temporary table
+// Create a custom function to log messages directly to the log file
 $pdo->exec("
     CREATE OR REPLACE FUNCTION log_message(message TEXT) RETURNS VOID AS $$
     BEGIN
-        INSERT INTO temp_log (message) VALUES (message);
+        PERFORM pg_notify('log_channel', message);
     END;
     $$ LANGUAGE plpgsql;
 ");
+
+// Listen for notifications on the log channel
+$pdo->exec("LISTEN log_channel");
+
+// Open the log file in append mode
+$logFile = __DIR__ . '/message.log';
+$logHandle = fopen($logFile, 'a');
+if (!$logHandle) {
+    die(json_encode(['message' => "Failed to open log file."]));
+}
 
 // Call the stored procedure with the comma-separated string
 if (!empty($filePathsString)) {
@@ -77,22 +84,23 @@ if (!empty($filePathsString)) {
         $stmt->bindParam(':file_paths', $filePathsString, PDO::PARAM_STR);
         $stmt->execute();
 
+        // Write initial log messages
+        fwrite($logHandle, "Files uploaded and processed successfully!\n");
+        fwrite($logHandle, "Log Messages:\n");
+
         // Fetch and log RAISE NOTICE messages
-        $logMessages = $pdo->query("SELECT message FROM temp_log")->fetchAll(PDO::FETCH_COLUMN);
-        $logFile = __DIR__ . '/message.log';
-        file_put_contents($logFile, "Files uploaded and processed successfully!\n", FILE_APPEND);
-        file_put_contents($logFile, "Log Messages:\n", FILE_APPEND);
-        foreach ($logMessages as $message) {
-            file_put_contents($logFile, $message . "\n", FILE_APPEND);
+        while ($notification = $pdo->pgsqlGetNotify(PDO::FETCH_ASSOC, 1000)) {
+            fwrite($logHandle, $notification['message'] . "\n");
+            fflush($logHandle); // Ensure the message is written immediately
         }
 
         // Check if data is loaded onto cleaned_normalized table
         $stmt = $pdo->query("SELECT COUNT(*) FROM cleaned_normalized");
         $rowCount = $stmt->fetchColumn();
         if ($rowCount > 0) {
-            $responseMessage = "Data loaded onto cleaned_normalized table successfully.";
+            $responseMessage = "Files uploaded and processed successfully!\nData loaded onto cleaned_normalized table successfully.";
         } else {
-            $responseMessage = "Data not loaded onto cleaned_normalized table.";
+            $responseMessage = "Files uploaded and processed successfully!\nData not loaded onto cleaned_normalized table.";
         }
     } catch (PDOException $e) {
         error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
@@ -101,6 +109,9 @@ if (!empty($filePathsString)) {
 } else {
     $responseMessage = "No files uploaded or paths are empty.";
 }
+
+// Close the log file handle
+fclose($logHandle);
 
 // Send response message as JSON
 echo json_encode(['message' => $responseMessage]);
