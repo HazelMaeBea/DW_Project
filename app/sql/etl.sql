@@ -979,10 +979,6 @@ $$;
 CREATE OR REPLACE PROCEDURE populate_location_dimension()
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    rec RECORD;
-    city_count INT;
-    street_count INT;
 BEGIN
     TRUNCATE TABLE location_dimension;
 	
@@ -994,7 +990,7 @@ BEGIN
         NULL AS parent_id
     FROM cleaned_normalized;
 
-	INSERT INTO location_dimension (location_id, location_name, level, parent_id)
+    INSERT INTO location_dimension (location_id, location_name, level, parent_id)
     SELECT DISTINCT 
         UPPER(state)||zip_code AS location_id,
         state || ' ' || zip_code AS location_name,
