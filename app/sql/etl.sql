@@ -180,7 +180,6 @@ BEGIN
     CALL create_time_dimension();
     CALL create_final_fact_table();
     CALL create_data_cube();
-    CALL create_data_cube();
 END;
 $$;
 ----------------------------------------------------------------------------------------------------------------------
