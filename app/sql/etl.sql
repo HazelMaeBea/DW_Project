@@ -530,7 +530,7 @@ BEGIN
 		to_char(CEIL(EXTRACT(MONTH FROM order_date)/6), 'FM00') as halfyear,
 		to_char(EXTRACT(QUARTER FROM order_date), 'FM00') AS quarter,
         SPLIT_PART(purchase_address, ',', 1) AS street, 
-        SPLIT_PART(purchase_address, ',', 2) AS city, 
+        LTRIM(SPLIT_PART(purchase_address, ',', 2)) AS city, 
         SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 2) AS state, 
         SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
     FROM cleaned;
