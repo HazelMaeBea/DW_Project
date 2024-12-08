@@ -1055,7 +1055,7 @@ CREATE OR REPLACE PROCEDURE create_location_dimension()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-	DROP IF EXISTS TABLE location_dimension;
+	DROP TABLE IF EXISTS location_dimension;
 	CREATE TABLE IF NOT EXISTS location_dimension (
 	    location_id VARCHAR(50) PRIMARY KEY, 
 	    location_name VARCHAR(255),          
