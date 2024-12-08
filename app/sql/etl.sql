@@ -741,6 +741,55 @@ END;
 $$;
 
 --Function to insert a new product
+CREATE OR REPLACE FUNCTION insert_new_product(
+    in p_product_name VARCHAR,
+    in p_price_each DECIMAL
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    next_pk_id INTEGER;
+    next_pid_id INTEGER;
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM product_dimension
+        WHERE LOWER(product_name) =LOWER(TRIM(p_product_name))
+        AND active_status = 'Y'
+    ) THEN
+        RAISE EXCEPTION 'Product % already exists!', p_product_name;
+    ELSE
+        -- Get the next IDs
+        SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
+        INTO next_pk_id 
+        FROM product_dimension;
+        
+        SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
+        INTO next_pid_id 
+        FROM product_dimension;
+
+        -- Insert new product
+        INSERT INTO product_dimension (
+            product_key,
+            product_id,
+            product_name,
+            price_each,
+            last_update_date,
+            active_status,
+            action_flag
+        ) VALUES (
+            'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+            'PID_' || LPAD(next_pid_id::TEXT, 4, '0'),
+            INITCAP(TRIM(p_product_name)),
+            p_price_each,
+            TO_TIMESTAMP(TO_CHAR(CURRENT_TIMESTAMP, 'MM/DD/YY HH24:MI:SS'), 'MM/DD/YY HH24:MI:SS'),
+            'Y',
+            'I'
+        );
+    END IF;
+END;
+$$;
 
 
 ---------------------------------------------------------------------------------------------------------------
