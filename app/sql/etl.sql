@@ -475,7 +475,7 @@ BEGIN
     PERFORM log_message('Starting data normalization...');
 
     -- Create the cleaned_normalized table with appropriate data types
-	DROP TABLE cleaned_normalized;
+	DROP TABLE IF EXISTS cleaned_normalized;
     CREATE TABLE IF NOT EXISTS cleaned_normalized (
         order_id INT, 
         product VARCHAR, 
