@@ -11,6 +11,7 @@
     TRUNCATE TABLE location_dimension;
     TRUNCATE TABLE final_fact;
     TRUNCATE TABLE data_cube;
+    TRUNCATE TABLE sliced_cube;
 
 -- Select statements
     SELECT * FROM landing_table;
@@ -23,8 +24,11 @@
     SELECT * FROM location_dimension ORDER BY level DESC;
     SELECT * FROM final_fact;
     SELECT * FROM data_cube;
+    SELECT * FROM sliced_cube;
 
 -- Call the procedures
+    CALL clear_all_tables(); -- using delete instead of truncate
+    CALL call_all_procedures();
     CALL truncate_all_tables();
     CALL data_extraction(); -- just to complete the list of procedures
     CALL data_mapping();
@@ -142,15 +146,3 @@
         quantity_ordered INT,
         total_sales NUMERIC
     );
-
--- Procedure to truncate all relevant tables (for testing purposes)
-    CREATE OR REPLACE PROCEDURE truncate_all_tables()
-    LANGUAGE plpgsql
-    AS $$
-    BEGIN
-        DELETE FROM cleaned;
-        DELETE FROM for_cleaning;
-        DELETE FROM invalid;
-        DELETE FROM cleaned_normalized;
-    END;
-    $$;

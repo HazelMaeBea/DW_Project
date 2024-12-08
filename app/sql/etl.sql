@@ -155,22 +155,18 @@ CREATE OR REPLACE PROCEDURE clear_all_tables()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'landing_table') THEN
-        DELETE FROM landing_table;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cleaned') THEN
-        DELETE FROM cleaned;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'for_cleaning') THEN
-        DELETE FROM for_cleaning;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'invalid') THEN
-        DELETE FROM invalid;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cleaned_normalized') THEN
-        DELETE FROM cleaned_normalized;
-    END IF;
-    
+    DELETE FROM landing_table;
+    DELETE FROM cleaned;
+    DELETE FROM for_cleaning;
+    DELETE FROM invalid;
+    DELETE FROM cleaned_normalized;
+    DELETE FROM product_dimension;
+    DELETE FROM time_dimension;
+    DELETE FROM location_dimension;
+    DELETE FROM final_fact;
+    DELETE FROM data_cube;
+    DELETE FROM sliced_cube;
+
     PERFORM log_message('All tables cleared.');
 END;
 $$;

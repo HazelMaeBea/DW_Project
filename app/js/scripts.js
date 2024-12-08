@@ -28,9 +28,6 @@ function updateFileList() {
 		listItem.appendChild(removeButton);
 		fileList.appendChild(listItem);
 	});
-	document.getElementById(
-		"file-label"
-	).textContent = `${selectedFiles.length} file(s) selected`;
 }
 
 function removeFile(index) {
