@@ -1018,15 +1018,20 @@ BEGIN
     FROM time_dimension
     ON CONFLICT (time_id) DO NOTHING;
 
-    -- Move data from final_fact to sales
+    -- Move data from final_fact to sales, avoiding complete duplicates
     INSERT INTO sales (order_id, product_id, location_id, time_id, quantity_ordered, total_sales)
-    SELECT DISTINCT ON (order_id, product_id, location_id, time_id)
-        order_id, product_id, location_id, time_id, quantity_ordered, total_sales
-    FROM final_fact
-    ON CONFLICT (order_id, product_id, location_id, time_id) DO NOTHING;
+    SELECT order_id, product_id, location_id, time_id, quantity_ordered, total_sales
+    FROM (
+        SELECT DISTINCT ON (order_id, product_id, location_id, time_id)
+            order_id, product_id, location_id, time_id, quantity_ordered, total_sales
+        FROM final_fact
+    ) AS new_sales
+    EXCEPT
+    SELECT order_id, product_id, location_id, time_id, quantity_ordered, total_sales
+    FROM sales;
 
     -- Call the procedure to rebuild the sales_data_cube
-    CALL create_sales_data_cube();
+    CALL create_data_cube();
 
     PERFORM log_message('Data moved and appended, sales_data_cube rebuilt.');
 END;
