@@ -103,9 +103,9 @@ if (!empty($filePathsString)) {
         $stmt = $pdo->query("SELECT COUNT(*) FROM cleaned_normalized");
         $rowCount = $stmt->fetchColumn();
         if ($rowCount > 0) {
-            $responseMessage = "Files uploaded and processed successfully!\nData loaded onto cleaned_normalized table successfully.";
+            $responseMessage = "Files uploaded and processed successfully!\nData loaded onto data_cube table successfully.";
         } else {
-            $responseMessage = "Files uploaded and processed successfully!\nData not loaded onto cleaned_normalized table.";
+            $responseMessage = "Files uploaded and processed successfully!\nData not loaded onto data_cube table.";
         }
     } catch (PDOException $e) {
         error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
