@@ -42,6 +42,30 @@
     CALL populate_location_dimension();
     CALL create_final_fact_table();
     CALL create_data_cube();
+    CALL delete_permanent_records();
+
+    CREATE OR REPLACE PROCEDURE delete_permanent_records()
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        -- Delete data from products
+        DELETE FROM products;
+
+        -- Delete data from locations
+        DELETE FROM locations;
+
+        -- Delete data from time
+        DELETE FROM time;
+
+        -- Delete data from sales
+        DELETE FROM sales;
+
+        -- Delete data from sales_data_cube
+        DELETE FROM sales_data_cube;
+
+        PERFORM log_message('Permanent records deleted.');
+    END;
+    $$;
 
 -- Testing for duplicates, both complete and only ids
     SELECT * FROM for_cleaning
