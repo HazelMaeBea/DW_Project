@@ -1031,7 +1031,7 @@ BEGIN
     FROM sales;
 
     -- Call the procedure to rebuild the sales_data_cube
-    CALL create_data_cube();
+    CALL create_sales_data_cube();
 
     PERFORM log_message('Data moved and appended, sales_data_cube rebuilt.');
 END;
