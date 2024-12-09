@@ -10,7 +10,7 @@
     TRUNCATE TABLE time_dimension;
     TRUNCATE TABLE location_dimension;
     TRUNCATE TABLE final_fact;
-    TRUNCATE TABLE data_cube;
+    TRUNCATE TABLE sales_data_cube;
     TRUNCATE TABLE sliced_cube;
 
 -- Select statements

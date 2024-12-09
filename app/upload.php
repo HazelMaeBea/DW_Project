@@ -60,8 +60,14 @@ if (!empty($_FILES['csv_files']['name'][0])) {
         $stmt->execute();
 
         // Fetch notifications from log_channel
+        $notifications = [];
         while ($notification = $pdo->pgsqlGetNotify(PDO::FETCH_ASSOC, 1000)) {
-            $logData = json_encode(['message' => $notification['message']]);
+            $notifications[] = $notification['message'];
+        }
+
+        // Log all notifications at once
+        foreach ($notifications as $message) {
+            $logData = json_encode(['message' => $message]);
             $ch = curl_init('log_message.php');
             curl_setopt($ch, CURLOPT_POST, 1);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
@@ -79,8 +85,12 @@ if (!empty($_FILES['csv_files']['name'][0])) {
             $responseMessage = "Files uploaded and processed successfully!\nData not loaded onto sales_data_cube table.";
         }
 
-        // Log the success message
-        $logData = json_encode(['message' => $responseMessage]);
+        // Calculate the elapsed time
+        $endTime = microtime(true);
+        $elapsedTime = $endTime - $startTime;
+
+        // Log the success message with elapsed time
+        $logData = json_encode(['message' => $responseMessage . "\nElapsed time: " . gmdate("H\h i\m s\s", $elapsedTime)]);
         $ch = curl_init('log_message.php');
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
