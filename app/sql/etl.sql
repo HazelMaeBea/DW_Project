@@ -197,9 +197,9 @@ $$;
 CREATE OR REPLACE FUNCTION log_message(message TEXT) RETURNS VOID 
 LANGUAGE plpgsql
 AS $$
-    BEGIN
-        PERFORM pg_notify('log_channel', message);
-    END;
+BEGIN
+    PERFORM pg_notify('log_channel', message);
+END;
 $$;
 
 -- [Start of the ETL process]
@@ -240,7 +240,7 @@ BEGIN
         DROP TABLE temp_csv;
     END LOOP;
 
-	CALL call_all_procedures();
+    CALL call_all_procedures();
 
     PERFORM log_message('Data extraction completed.');
 END;
@@ -269,7 +269,8 @@ BEGIN
         OR LOWER(order_date) = 'order date'
         OR LOWER(purchase_address) = 'purchase address';
     
-    PERFORM log_message('Invalid records inserted.');
+    PERFORM log_message('Invalid records inserted onto Invalid table.');
+    PERFORM log_message('Starting Insert into cleaned table.');
 
     INSERT INTO cleaned
     SELECT
@@ -1216,7 +1217,7 @@ $$;
 -- Procedure works by taking in a top parent time or a top parent location, these parameters may be null
 -- Output gets inserted into sliced_cube table
 CREATE OR REPLACE PROCEDURE slice_cube(IN top_node_time TEXT, IN top_node_loc TEXT)
-LANGUAGE 'plpgsql'
+LANGUAGE plpgsql
 AS $$
 BEGIN
     DELETE FROM sliced_cube;

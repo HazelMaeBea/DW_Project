@@ -1,10 +1,10 @@
 <?php
+// Read the raw POST data from the request body
 $data = json_decode(file_get_contents('php://input'), true);
+
+// Check if the 'message' key exists in the decoded data
 if (isset($data['message'])) {
-    $logFile = __DIR__ . '/message.log';
-    file_put_contents($logFile, $data['message'] . "\n", FILE_APPEND);
-    echo json_encode(['status' => 'success']);
-} else {
-    echo json_encode(['status' => 'error', 'message' => 'No message provided']);
+    // Append the message to 'message.log' file
+    error_log($data['message'] . "\n", 3, __DIR__ . '/message.log');
 }
 ?>
