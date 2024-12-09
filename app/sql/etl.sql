@@ -42,15 +42,24 @@ BEGIN
         purchase_address VARCHAR(255)
 	);
 
-	CREATE TABLE IF NOT EXISTS time_dimension 
-	(
-		time_id varchar,
-		time_desc varchar,
-		time_level int,
-		parent_id varchar
-	);
+    CREATE TABLE IF NOT EXISTS cleaned_normalized 
+    (
+        order_id INT, 
+        product VARCHAR, 
+        quantity_ordered INT, 
+        price_each NUMERIC, 
+        order_date TIMESTAMP, 
+        month VARCHAR, 
+        day VARCHAR, 
+        year VARCHAR,
+		halfyear VARCHAR,
+		quarter VARCHAR, 
+        street VARCHAR, 
+        city VARCHAR, 
+        state VARCHAR, 
+        zip_code VARCHAR
+    );
 
--- product_dimension table
     CREATE TABLE IF NOT EXISTS product_dimension
     (
 	    product_key VARCHAR(10),
@@ -63,7 +72,14 @@ BEGIN
         PRIMARY KEY(product_key)
     );
 
--- location_dimension table
+	CREATE TABLE IF NOT EXISTS time_dimension 
+	(
+		time_id varchar,
+		time_desc varchar,
+		time_level int,
+		parent_id varchar
+	);
+ 
 	CREATE TABLE IF NOT EXISTS location_dimension 
     (
 	    location_id VARCHAR(50) PRIMARY KEY, 
@@ -72,7 +88,6 @@ BEGIN
 	    parent_id VARCHAR(50)               
 	);
 
--- final_fact table
     CREATE TABLE IF NOT EXISTS final_fact 
     (
         order_id INT,
@@ -83,26 +98,58 @@ BEGIN
         total_sales NUMERIC
     );
 
--- data_cube table
-    CREATE TABLE IF NOT EXISTS data_cube 
+    CREATE TABLE IF NOT EXISTS sales_data_cube 
     (
-        product_id VARCHAR,
-        location_id VARCHAR, 
+        product_id VARCHAR, 
         time_id VARCHAR, 
+        location_id VARCHAR,
+        total_sales_sum NUMERIC
+    );
+
+    CREATE TABLE IF NOT EXISTS sliced_cube
+    (
+            product_id varchar,
+            time_id varchar,
+            location_id varchar,
+            total_sales_sum numeric
+    );
+
+    CREATE TABLE IF NOT EXISTS products 
+    (
+    product_key VARCHAR(10) PRIMARY KEY,
+    product_id VARCHAR(10),
+    product_name VARCHAR(100),
+    price_each DECIMAL(10, 2),
+    last_update_date TIMESTAMP,
+    active_status CHAR(1),
+    action_flag CHAR(1)
+    );
+
+    CREATE TABLE IF NOT EXISTS locations 
+    (
+        location_id VARCHAR(50) PRIMARY KEY,
+        location_name VARCHAR(255),
+        level INT,
+        parent_id VARCHAR(50)
+    );
+
+    CREATE TABLE IF NOT EXISTS time 
+    (
+        time_id VARCHAR PRIMARY KEY,
+        time_desc VARCHAR,
+        time_level INT,
+        parent_id VARCHAR
+    );
+
+    CREATE TABLE IF NOT EXISTS sales 
+    (
+        order_id INT,
+        product_id VARCHAR,
+        location_id VARCHAR,
+        time_id VARCHAR,
         quantity_ordered INT,
         total_sales NUMERIC
     );
-
--- sliced_data_cube table
-    CREATE TABLE IF NOT EXISTS sliced_data_cube 
-    (
-        product_id VARCHAR,
-        location_id VARCHAR, 
-        time_id VARCHAR, 
-        quantity_ordered INT,
-        total_sales NUMERIC
-    );
-
     PERFORM log_message('All tables initially created');
 END;
 $$;
@@ -123,8 +170,8 @@ BEGIN
     DELETE FROM time_dimension;
     DELETE FROM location_dimension;
     DELETE FROM final_fact;
-    DELETE FROM data_cube;
-    DELETE FROM sliced_data_cube;
+    DELETE FROM sales_data_cube;
+    DELETE FROM sliced_cube;
 
     PERFORM log_message('All tables cleared.');
 END;
@@ -142,7 +189,8 @@ BEGIN
     CALL create_location_dimension();
     CALL create_time_dimension();
     CALL create_final_fact_table();
-    CALL create_data_cube();
+    CALL create_sales_data_cube();
+    CALL move_and_append_data();
 END;
 $$;
 
@@ -167,16 +215,6 @@ BEGIN
 
     -- Clear all relevant tables only on initial data extraction
     CALL clear_all_tables();
-
-    -- Create landing_table if it doesn't exist
-    CREATE TABLE IF NOT EXISTS landing_table (
-        order_id VARCHAR(255),
-        product VARCHAR(255),
-        quantity_ordered VARCHAR(255),
-        price_each VARCHAR(255),
-        order_date VARCHAR(255),
-        purchase_address VARCHAR(255)
-    );
 
     -- Split the file paths into an array
     FOR file_path IN SELECT unnest(string_to_array(file_paths, ',')) LOOP
@@ -215,35 +253,6 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     PERFORM log_message('Starting data mapping...');
-
-	CREATE TABLE IF NOT EXISTS cleaned (
-    order_id INT,
-    product VARCHAR(255),
-    quantity_ordered INT,
-    price_each DECIMAL(10, 2),
-    order_date TIMESTAMP,
-    purchase_address VARCHAR(255)
-	);
-
-	CREATE TABLE IF NOT EXISTS for_cleaning (
-    order_id VARCHAR(255),
-    product VARCHAR(255),
-    quantity_ordered VARCHAR(255),
-    price_each VARCHAR(255),
-    order_date VARCHAR(255),
-    purchase_address VARCHAR(255)
-	);
-
-	CREATE TABLE IF NOT EXISTS invalid (
-    order_id VARCHAR(255),
-    product VARCHAR(255),
-    quantity_ordered VARCHAR(255),
-    price_each VARCHAR(255),
-    order_date VARCHAR(255),
-    purchase_address VARCHAR(255)
-	);
-    
-    PERFORM log_message('Tables created or verified.');
 
     INSERT INTO invalid
     SELECT * FROM landing_table
@@ -494,27 +503,6 @@ AS $$
 BEGIN
     PERFORM log_message('Starting data normalization...');
 
-    -- Create the cleaned_normalized table with appropriate data types
-	DROP TABLE IF EXISTS cleaned_normalized;
-    CREATE TABLE IF NOT EXISTS cleaned_normalized (
-        order_id INT, 
-        product VARCHAR, 
-        quantity_ordered INT, 
-        price_each NUMERIC, 
-        order_date TIMESTAMP, 
-        month VARCHAR, 
-        day VARCHAR, 
-        year VARCHAR,
-		halfyear VARCHAR,
-		quarter VARCHAR, 
-        street VARCHAR, 
-        city VARCHAR, 
-        state VARCHAR, 
-        zip_code VARCHAR
-    );
-
-    PERFORM log_message('cleaned_normalized table created or verified.');
-
     -- Insert data into cleaned_normalized
     INSERT INTO cleaned_normalized 
         (order_id, product, quantity_ordered, price_each, order_date, month, day, year, halfyear, quarter, street, city, state, zip_code)
@@ -540,7 +528,7 @@ BEGIN
     -- Truncate the cleaned table
     TRUNCATE TABLE cleaned;
 
-    PERFORM log_message('cleaned table truncated.');
+    PERFORM log_message('cleaned table cleared.');
 
     PERFORM log_message('Data normalization completed.');
 END;
@@ -615,13 +603,13 @@ BEGIN
 
                 INSERT INTO product_dimension
                 (
-			product_key,
-			product_id,
-			product_name,
-			price_each,
-			last_update_date,
-			active_status,
-			action_flag
+                    product_key,
+                    product_id,
+                    product_name,
+                    price_each,
+                    last_update_date,
+                    active_status,
+                    action_flag
                 )
                 SELECT 
                     'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
@@ -660,18 +648,6 @@ BEGIN
         FROM cleaned_normalized
         GROUP BY product, price_each
         ORDER BY product, order_date
-    );
-
-    CREATE TABLE IF NOT EXISTS product_dimension
-    (
-	product_key VARCHAR(10),
-        product_id VARCHAR(10),
-        product_name VARCHAR(100),
-        price_each DECIMAL(10,2),
-        last_update_date TIMESTAMP,
-        active_status CHAR(1),
-        action_flag CHAR(1),
-        PRIMARY KEY(product_key)
     );
 
     --handles the data versioning of the products
@@ -847,131 +823,10 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE create_time_dimension()
 AS $$
 BEGIN
-    DROP TABLE time_dimension;
-    CREATE TABLE IF NOT EXISTS time_dimension 
-	(
-		time_id varchar,
-		time_desc varchar,
-		time_level int,
-		parent_id varchar
-	);
-
+    DELETE FROM time_dimension;
     CALL populate_time_dimension();
 END;
 $$ LANGUAGE plpgsql;
-
--- Procedure to handle time insert
-CREATE OR REPLACE FUNCTION handle_time_insert()
-RETURNS TRIGGER AS $$
-DECLARE
-    v_year VARCHAR;
-    v_halfyear VARCHAR;
-    v_quarter VARCHAR;
-    v_month VARCHAR;
-    v_day VARCHAR;
-BEGIN
-    -- Extract time components from NEW.order_date
-    v_year := to_char(NEW.order_date, 'YYYY');
-    v_halfyear := to_char(CEIL(EXTRACT(MONTH FROM NEW.order_date) / 6), 'FM00');
-    v_quarter := to_char(EXTRACT(QUARTER FROM NEW.order_date), 'FM00');
-    v_month := to_char(EXTRACT(MONTH FROM NEW.order_date), 'FM00');
-    v_day := to_char(EXTRACT(DAY FROM NEW.order_date), 'FM00');
-
-    -- Insert year if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Y' || v_year) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('Y' || v_year, v_year, 4, NULL);
-    END IF;
-
-    -- Insert halfyear if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'H' || v_year || v_halfyear) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('H' || v_year || v_halfyear, v_year || ' H' || v_halfyear, 3, 'Y' || v_year);
-    END IF;
-
-    -- Insert quarter if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Q' || v_year || v_quarter) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('Q' || v_year || v_quarter, v_year || ' Q' || v_quarter, 2, 'Y' || v_year);
-    END IF;
-
-    -- Insert month if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'M' || v_year || v_month) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('M' || v_year || v_month, v_year || '-' || v_month, 1, 'Y' || v_year);
-    END IF;
-
-    -- Insert day if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'D' || v_year || v_month || v_day) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('D' || v_year || v_month || v_day, v_year || '-' || v_month || '-' || v_day, 0, 'M' || v_year || v_month);
-    END IF;
-
-    RETURN NEW;  -- Allow the modified INSERT to proceed
-END;
-$$ LANGUAGE plpgsql;
-
--- Create the trigger that only fires for time inserts
-DROP TRIGGER IF EXISTS tr_handle_time_insert ON time_dimension;
-CREATE TRIGGER tr_handle_time_insert
-BEFORE INSERT
-ON time_dimension
-FOR EACH ROW
-EXECUTE FUNCTION handle_time_insert();
-
--- Update the insert function to include all required fields
-CREATE OR REPLACE FUNCTION insert_new_time
-(
-    IN p_order_date TIMESTAMP
-)
-RETURNS VOID
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_year VARCHAR;
-    v_halfyear VARCHAR;
-    v_quarter VARCHAR;
-    v_month VARCHAR;
-    v_day VARCHAR;
-BEGIN
-    -- Extract time components
-    v_year := to_char(p_order_date, 'YYYY');
-    v_halfyear := to_char(CEIL(EXTRACT(MONTH FROM p_order_date) / 6), 'FM00');
-    v_quarter := to_char(EXTRACT(QUARTER FROM p_order_date), 'FM00');
-    v_month := to_char(EXTRACT(MONTH FROM p_order_date), 'FM00');
-    v_day := to_char(EXTRACT(DAY FROM p_order_date), 'FM00');
-
-    -- Insert year if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Y' || v_year) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('Y' || v_year, v_year, 4, NULL);
-    END IF;
-
-    -- Insert halfyear if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'H' || v_year || v_halfyear) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('H' || v_year || v_halfyear, v_year || ' H' || v_halfyear, 3, 'Y' || v_year);
-    END IF;
-
-    -- Insert quarter if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'Q' || v_year || v_quarter) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('Q' || v_year || v_quarter, v_year || ' Q' || v_quarter, 2, 'Y' || v_year);
-    END IF;
-
-    -- Insert month if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'M' || v_year || v_month) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('M' || v_year || v_month, v_year || '-' || v_month, 1, 'Y' || v_year);
-    END IF;
-
-    -- Insert day if not exists
-    IF NOT EXISTS (SELECT 1 FROM time_dimension WHERE time_id = 'D' || v_year || v_month || v_day) THEN
-        INSERT INTO time_dimension (time_id, time_desc, time_level, parent_id)
-        VALUES ('D' || v_year || v_month || v_day, v_year || '-' || v_month || '-' || v_day, 0, 'M' || v_year || v_month);
-    END IF;
-END;
-$$;
 
 -- [Location Dimension]
 ---------------------------------------------------------------------------------------------------------------
@@ -1057,14 +912,7 @@ CREATE OR REPLACE PROCEDURE create_location_dimension()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-	DROP TABLE IF EXISTS location_dimension;
-	CREATE TABLE IF NOT EXISTS location_dimension (
-	    location_id VARCHAR(50) PRIMARY KEY, 
-	    location_name VARCHAR(255),          
-	    level INT,                           
-	    parent_id VARCHAR(50)               
-	);
-
+	DELETE FROM location_dimension;
 	CALL populate_location_dimension();
 END;
 $$;
@@ -1120,15 +968,15 @@ $$;
 -- [Data Cube]
 ---------------------------------------------------------------------------------------------------------------
 -- Procedure to create the data cube
-CREATE OR REPLACE PROCEDURE create_data_cube()
+CREATE OR REPLACE PROCEDURE create_sales_data_cube()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    -- Drop the data_cube table if it exists
-    DROP TABLE IF EXISTS data_cube;
+    -- Drop the sales_data_cube table if it exists
+    DELETE FROM sales_data_cube;
 
-    -- Create the data_cube table with aggregated data
-    CREATE TABLE data_cube AS
+    -- Create the sales_data_cube table with aggregated data
+    INSERT INTO sales_data_cube (product_id, time_id, location_id, total_sales_sum)
     SELECT
         product_id,
         time_id,
@@ -1136,12 +984,51 @@ BEGIN
         SUM(total_sales) AS total_sales_sum
     FROM final_fact
     GROUP BY CUBE(product_id, time_id, location_id)
-	ORDER BY 
-		product_id NULLS FIRST,
-		time_id NULLS FIRST,
-		location_id NULLS FIRST;
+    ORDER BY 
+        product_id NULLS FIRST,
+        time_id NULLS FIRST,
+        location_id NULLS FIRST;
 
-    PERFORM log_message('data_cube table created and populated.');
+    PERFORM log_message('sales_data_cube table created and populated.');
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE move_and_append_data()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Move data from product_dimension to products
+    INSERT INTO products (product_key, product_id, product_name, price_each, last_update_date, active_status, action_flag)
+    SELECT DISTINCT ON (product_key)
+        product_key, product_id, product_name, price_each, last_update_date, active_status, action_flag
+    FROM product_dimension
+    ON CONFLICT (product_key) DO NOTHING;
+
+    -- Move data from location_dimension to locations
+    INSERT INTO locations (location_id, location_name, level, parent_id)
+    SELECT DISTINCT ON (location_id)
+        location_id, location_name, level, parent_id
+    FROM location_dimension
+    ON CONFLICT (location_id) DO NOTHING;
+
+    -- Move data from time_dimension to time
+    INSERT INTO time (time_id, time_desc, time_level, parent_id)
+    SELECT DISTINCT ON (time_id)
+        time_id, time_desc, time_level, parent_id
+    FROM time_dimension
+    ON CONFLICT (time_id) DO NOTHING;
+
+    -- Move data from final_fact to sales
+    INSERT INTO sales (order_id, product_id, location_id, time_id, quantity_ordered, total_sales)
+    SELECT DISTINCT ON (order_id, product_id, location_id, time_id)
+        order_id, product_id, location_id, time_id, quantity_ordered, total_sales
+    FROM final_fact
+    ON CONFLICT (order_id, product_id, location_id, time_id) DO NOTHING;
+
+    -- Call the procedure to rebuild the sales_data_cube
+    CALL create_sales_data_cube();
+
+    PERFORM log_message('Data moved and appended, sales_data_cube rebuilt.');
 END;
 $$;
 
@@ -1150,86 +1037,85 @@ $$;
 -- [Extract Grains Location]
 -- Procedure to extract the grains of the location based on 2 parameters:
 -- extract_grains_loc(Grain level, Highest Parent_ID)
-DROP PROCEDURE IF EXISTS extract_grains_loc(integer, varchar);
 CREATE OR REPLACE PROCEDURE public.extract_grains_loc(
-	IN grain INTEGER,
-	IN top_node VARCHAR)
+    IN grain INTEGER,
+    IN top_node VARCHAR)
 LANGUAGE 'plpgsql'
 AS $$
 
 DECLARE
-	top_level INT := (SELECT level FROM location_dimension WHERE location_id = top_node);
-	counter INT := 4;
+    top_level INT := (SELECT level FROM locations WHERE location_id = top_node);
+    counter INT := 4;
 BEGIN
-	RAISE NOTICE 'top_level is %', top_level;
-	DROP TABLE IF EXISTS locationResult;
-	CREATE TEMP TABLE locationResult AS
-    SELECT * FROM location_dimension WHERE 1=2;
+    RAISE NOTICE 'top_level is %', top_level;
+    DROP TABLE IF EXISTS locationResult;
+    CREATE TEMP TABLE locationResult AS
+    SELECT * FROM locations WHERE 1=2;
 
-	-- If top node is null, inserts the grains year
-	IF top_node IS NULL THEN
-		INSERT INTO locationResult
-		SELECT * FROM location_dimension ld WHERE ld.level = 3;
+    -- If top node is null, inserts the grains year
+    IF top_node IS NULL THEN
+        INSERT INTO locationResult
+        SELECT * FROM locations ld WHERE ld.level = 3;
 
-	-- If grain is null, inserts all the records under the top_node 
-	ELSIF top_node IS NOT NULL AND grain IS NULL THEN
-		IF counter = 4 THEN
-			INSERT INTO locationResult
-			SELECT * FROM location_dimension WHERE parent_id = top_node;
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-		IF counter = 3 THEN
-			INSERT INTO locationResult
-			SELECT * FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id = top_node);
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-		IF counter = 2 THEN
-			INSERT INTO locationResult
-			SELECT * FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id = top_node));
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-		IF counter = 1 THEN
-			INSERT INTO locationResult
-			SELECT * FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id IN (SELECT location_id FROM location_dimension WHERE parent_id = top_node)));
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-	
-	-- Catch invalid parameter inputs
-	ELSIF grain > top_level THEN
-		RAISE NOTICE 'GRAIN IS BIGGER THAN TOP_NODE';
+    -- If grain is null, inserts all the records under the top_node 
+    ELSIF top_node IS NOT NULL AND grain IS NULL THEN
+        IF counter = 4 THEN
+            INSERT INTO locationResult
+            SELECT * FROM locations WHERE parent_id = top_node;
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+        IF counter = 3 THEN
+            INSERT INTO locationResult
+            SELECT * FROM locations WHERE parent_id IN (SELECT location_id FROM locations WHERE parent_id = top_node);
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+        IF counter = 2 THEN
+            INSERT INTO locationResult
+            SELECT * FROM locations WHERE parent_id IN (SELECT location_id FROM locations WHERE parent_id IN (SELECT location_id FROM locations WHERE parent_id = top_node));
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+        IF counter = 1 THEN
+            INSERT INTO locationResult
+            SELECT * FROM locations WHERE parent_id IN (SELECT location_id FROM locations WHERE parent_id IN (SELECT location_id FROM locations WHERE parent_id IN (SELECT location_id FROM locations WHERE parent_id = top_node)));
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+    
+    -- Catch invalid parameter inputs
+    ELSIF grain > top_level THEN
+        RAISE NOTICE 'GRAIN IS BIGGER THAN TOP_NODE';
 
-	-- If grain = top_level, insert the record itself
-	ELSIF grain = top_level THEN
-		INSERT INTO locationResult
-        SELECT * FROM location_dimension WHERE location_id = top_node;
-		RAISE NOTICE 'GRAIN IS EQUAL TO TOP_NODE';
+    -- If grain = top_level, insert the record itself
+    ELSIF grain = top_level THEN
+        INSERT INTO locationResult
+        SELECT * FROM locations WHERE location_id = top_node;
+        RAISE NOTICE 'GRAIN IS EQUAL TO TOP_NODE';
 
-	-- If grain is lower than top_level, then properly insert the requested grain underneath the top_node
-	ELSE
-		IF (top_level - grain) = 1 THEN
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 1';
-			INSERT INTO locationResult
-			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id = top_node;
-			
-		ELSIF (top_level - grain) = 2 THEN
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 2'; 
-			INSERT INTO locationResult
-			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM location_dimension t2 WHERE t2.parent_id = top_node);
-			
-		ELSIF (top_level - grain) = 3 THEN
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 3';
-			INSERT INTO locationResult
-			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM location_dimension t2 WHERE t2.parent_id IN (SELECT t3.location_id FROM location_dimension t3 WHERE t3.parent_id = top_node ));
-		ELSE
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 4';
-			INSERT INTO locationResult
-			SELECT t1.* FROM location_dimension t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM location_dimension t2 WHERE t2.parent_id IN (SELECT t3.location_id FROM location_dimension t3 WHERE t3.parent_id IN (SELECT t4.location_id FROM location_dimension t4 WHERE t4.parent_id = top_node)));
-		END IF;
-	END IF;
+    -- If grain is lower than top_level, then properly insert the requested grain underneath the top_node
+    ELSE
+        IF (top_level - grain) = 1 THEN
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 1';
+            INSERT INTO locationResult
+            SELECT t1.* FROM locations t1 WHERE t1.parent_id = top_node;
+            
+        ELSIF (top_level - grain) = 2 THEN
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 2'; 
+            INSERT INTO locationResult
+            SELECT t1.* FROM locations t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM locations t2 WHERE t2.parent_id = top_node);
+            
+        ELSIF (top_level - grain) = 3 THEN
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 3';
+            INSERT INTO locationResult
+            SELECT t1.* FROM locations t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM locations t2 WHERE t2.parent_id IN (SELECT t3.location_id FROM locations t3 WHERE t3.parent_id = top_node ));
+        ELSE
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 4';
+            INSERT INTO locationResult
+            SELECT t1.* FROM locations t1 WHERE t1.parent_id IN (SELECT t2.location_id FROM locations t2 WHERE t2.parent_id IN (SELECT t3.location_id FROM locations t3 WHERE t3.parent_id IN (SELECT t4.location_id FROM locations t4 WHERE t4.parent_id = top_node)));
+        END IF;
+    END IF;
 END;
 $$;
 
@@ -1238,87 +1124,85 @@ $$;
 -- Procedure to extract the grains of time based on 2 parameters:
 -- extract_grains_time(Grain level, Highest Parent_ID)
 CREATE OR REPLACE PROCEDURE public.extract_grains_time(
-	IN grain integer,
-	IN top_node text)
+    IN grain integer,
+    IN top_node text)
 LANGUAGE 'plpgsql'
-AS $BODY$
-
+AS $$
 DECLARE
-	top_level INT := (SELECT time_level FROM time_dimension WHERE time_id = top_node);
-	counter INT := 4;
-
+    top_level INT := (SELECT time_level FROM time WHERE time_id = top_node);
+    counter INT := 4;
 BEGIN
-	RAISE NOTICE 'STARTING TOP_LEVEL IS %', top_level;
-	DROP TABLE IF EXISTS timeResult;
-	CREATE TEMP TABLE timeResult AS
-    SELECT * FROM time_dimension WHERE 1=2;
+    RAISE NOTICE 'STARTING TOP_LEVEL IS %', top_level;
+    DROP TABLE IF EXISTS timeResult;
+    CREATE TEMP TABLE timeResult AS
+    SELECT * FROM time WHERE 1=2;
 
-	-- If top node is null, inserts the grains year
-	IF top_node IS NULL AND grain IS NOT NULL THEN
-		INSERT INTO timeResult
-		SELECT * FROM time_dimension WHERE time_level = 4;
+    -- If top node is null, inserts the grains year
+    IF top_node IS NULL AND grain IS NOT NULL THEN
+        INSERT INTO timeResult
+        SELECT * FROM time WHERE time_level = 4;
 
-	-- If grain is null, inserts all the records under the top_node 
-	ELSIF top_node IS NOT NULL AND grain IS NULL THEN
-		IF counter = 4 THEN
-			INSERT INTO timeResult
-			SELECT * FROM time_dimension WHERE  parent_id = top_node;
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-		IF counter = 3 THEN
-			INSERT INTO timeResult
-			SELECT * FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id = top_node);
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-		IF counter = 2 THEN
-			INSERT INTO timeResult
-			SELECT * FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id = top_node));
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
-		IF counter = 1 THEN
-			INSERT INTO timeResult
-			SELECT * FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id IN (SELECT time_id FROM time_dimension WHERE parent_id = top_node)));
-			counter = counter - 1;
-			RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
-		END IF;
+    -- If grain is null, inserts all the records under the top_node 
+    ELSIF top_node IS NOT NULL AND grain IS NULL THEN
+        IF counter = 4 THEN
+            INSERT INTO timeResult
+            SELECT * FROM time WHERE  parent_id = top_node;
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+        IF counter = 3 THEN
+            INSERT INTO timeResult
+            SELECT * FROM time WHERE parent_id IN (SELECT time_id FROM time WHERE parent_id = top_node);
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+        IF counter = 2 THEN
+            INSERT INTO timeResult
+            SELECT * FROM time WHERE parent_id IN (SELECT time_id FROM time WHERE parent_id IN (SELECT time_id FROM time WHERE parent_id = top_node));
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
+        IF counter = 1 THEN
+            INSERT INTO timeResult
+            SELECT * FROM time WHERE parent_id IN (SELECT time_id FROM time WHERE parent_id IN (SELECT time_id FROM time WHERE parent_id IN (SELECT time_id FROM time WHERE parent_id = top_node)));
+            counter = counter - 1;
+            RAISE NOTICE 'COUNTER IS NOW % AFTER BEING SUBTRACTED', counter;
+        END IF;
 
-	-- Catch invalid parameter inputs
-	ELSIF grain > top_level THEN
-		RAISE NOTICE 'GRAIN IS BIGGER THAN TOP_NODE';
+    -- Catch invalid parameter inputs
+    ELSIF grain > top_level THEN
+        RAISE NOTICE 'GRAIN IS BIGGER THAN TOP_NODE';
 
-	-- If grain = top_level, insert the record itself
-	ELSIF grain = top_level THEN
-		INSERT INTO timeResult
-        SELECT * FROM time_dimension WHERE time_id = top_node;
-		RAISE NOTICE 'GRAIN IS EQUAL TO TOP_NODE';
+    -- If grain = top_level, insert the record itself
+    ELSIF grain = top_level THEN
+        INSERT INTO timeResult
+        SELECT * FROM time WHERE time_id = top_node;
+        RAISE NOTICE 'GRAIN IS EQUAL TO TOP_NODE';
 
-	-- If grain is lower than top_level, then properly insert the requested grain underneath the top_node
-	ELSE
-		IF (top_level - grain) = 1 THEN
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 1';
-			INSERT INTO timeResult
-			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id = top_node;
-			
-		ELSIF (top_level - grain) = 2 THEN
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 2'; 
-			INSERT INTO timeResult
-			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time_dimension t2 WHERE t2.parent_id = top_node);
-			
-		ELSIF (top_level - grain) = 3 THEN
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 3';
-			INSERT INTO timeResult
-			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time_dimension t2 WHERE t2.parent_id IN (SELECT t3.time_id FROM time_dimension t3 WHERE t3.parent_id = top_node ));
-		ELSE
-			RAISE NOTICE 'RUN SUCCESSFULLY IN 4';
-			INSERT INTO timeResult
-			SELECT t1.* FROM time_dimension t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time_dimension t2 WHERE t2.parent_id IN (SELECT t3.time_id FROM time_dimension t3 WHERE t3.parent_id IN (SELECT t4.time_id FROM time_dimension t4 WHERE t4.parent_id = top_node)));
-		END IF;
-	END IF;
+    -- If grain is lower than top_level, then properly insert the requested grain underneath the top_node
+    ELSE
+        IF (top_level - grain) = 1 THEN
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 1';
+            INSERT INTO timeResult
+            SELECT t1.* FROM time t1 WHERE t1.parent_id = top_node;
+            
+        ELSIF (top_level - grain) = 2 THEN
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 2'; 
+            INSERT INTO timeResult
+            SELECT t1.* FROM time t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time t2 WHERE t2.parent_id = top_node);
+            
+        ELSIF (top_level - grain) = 3 THEN
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 3';
+            INSERT INTO timeResult
+            SELECT t1.* FROM time t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time t2 WHERE t2.parent_id IN (SELECT t3.time_id FROM time t3 WHERE t3.parent_id = top_node ));
+        ELSE
+            RAISE NOTICE 'RUN SUCCESSFULLY IN 4';
+            INSERT INTO timeResult
+            SELECT t1.* FROM time t1 WHERE t1.parent_id IN (SELECT t2.time_id FROM time t2 WHERE t2.parent_id IN (SELECT t3.time_id FROM time t3 WHERE t3.parent_id IN (SELECT t4.time_id FROM time t4 WHERE t4.parent_id = top_node)));
+        END IF;
+    END IF;
 END;
-$BODY$;
+$$;
 
 -- [Slice Cube]
 ---------------------------------------------------------------------------------------------------------------
@@ -1326,59 +1210,53 @@ $BODY$;
 -- specific products can be found using a where clause instead
 -- Procedure works by taking in a top parent time or a top parent location, these parameters may be null
 -- Output gets inserted into sliced_cube table
-CREATE OR REPLACE PROCEDURE slice_cube(IN top_node_time text, IN top_node_loc text)
-	LANGUAGE 'plpgsql'
-	AS $$
-	BEGIN
-	DROP TABLE IF EXISTS sliced_cube;
-	CREATE TABLE IF NOT EXISTS sliced_cube(
-			product_id varchar,
-			time_id varchar,
-			location_id varchar,
-			total_sales_sum numeric
-			);
-	
-		IF top_node_time IS NULL AND top_node_loc IS NULL THEN
-			INSERT INTO sliced_cube SELECT * FROM data_cube;
-			
-		ELSIF (top_node_time IS NOT NULL AND top_node_loc IS NULL) THEN
-			CALL extract_grains_time(0, top_node_time);
-			INSERT INTO sliced_cube
-				SELECT
-					product_id,
-					time_id,
-					location_id,
-					SUM(total_sales) as total_sales_sum
-				FROM final_fact
-				GROUP BY
-					CUBE(product_id, time_id, location_id)
-				HAVING time_id IN (SELECT time_id FROM timeResult);
-		ELSIF (top_node_time IS NULL AND top_node_loc IS NOT NULL) THEN
-			CALL extract_grains_loc(0, top_node_loc);
-			INSERT INTO sliced_cube
-				SELECT
-					product_id,
-					time_id,
-					location_id,
-					SUM(total_sales) as total_sales_sum
-				FROM final_fact
-				GROUP BY
-					CUBE(product_id, time_id, location_id)
-				HAVING location_id IN (SELECT location_id FROM locationResult);
-		ELSE
-			CALL extract_grains_time(NULL, top_node_time);
-			CALL extract_grains_loc(NULL, top_node_loc);
-			INSERT INTO sliced_cube
-				SELECT
-					product_id,
-					time_id,
-					location_id,
-					SUM(total_sales) as total_sales_sum
-				FROM final_fact
-				GROUP BY
-					CUBE(product_id, time_id, location_id)
-				HAVING time_id IN (SELECT time_id FROM timeResult) AND
-					   location_id IN (SELECT location_id FROM locationResult);
-		END IF;
-	END;
-	$$;
+CREATE OR REPLACE PROCEDURE slice_cube(IN top_node_time TEXT, IN top_node_loc TEXT)
+LANGUAGE 'plpgsql'
+AS $$
+BEGIN
+    DELETE FROM sliced_cube;
+
+    IF top_node_time IS NULL AND top_node_loc IS NULL THEN
+        INSERT INTO sliced_cube SELECT * FROM sales_sales_data_cube;
+        
+    ELSIF (top_node_time IS NOT NULL AND top_node_loc IS NULL) THEN
+        CALL extract_grains_time(0, top_node_time);
+        INSERT INTO sliced_cube
+            SELECT
+                product_id,
+                time_id,
+                location_id,
+                SUM(total_sales) as total_sales_sum
+            FROM sales
+            GROUP BY
+                CUBE(product_id, time_id, location_id)
+            HAVING time_id IN (SELECT time_id FROM timeResult);
+    ELSIF (top_node_time IS NULL AND top_node_loc IS NOT NULL) THEN
+        CALL extract_grains_loc(0, top_node_loc);
+        INSERT INTO sliced_cube
+            SELECT
+                product_id,
+                time_id,
+                location_id,
+                SUM(total_sales) as total_sales_sum
+            FROM sales
+            GROUP BY
+                CUBE(product_id, time_id, location_id)
+            HAVING location_id IN (SELECT location_id FROM locationResult);
+    ELSE
+        CALL extract_grains_time(NULL, top_node_time);
+        CALL extract_grains_loc(NULL, top_node_loc);
+        INSERT INTO sliced_cube
+            SELECT
+                product_id,
+                time_id,
+                location_id,
+                SUM(total_sales) as total_sales_sum
+            FROM sales
+            GROUP BY
+                CUBE(product_id, time_id, location_id)
+            HAVING time_id IN (SELECT time_id FROM timeResult) AND
+                   location_id IN (SELECT location_id FROM locationResult);
+    END IF;
+END;
+$$;
