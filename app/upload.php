@@ -119,7 +119,7 @@ if (!empty($filePathsString)) {
 fclose($logHandle);
 
 // Send response message as JSON
-echo json_encode(['message' => $responseMessage]);
+echo json_encode(['message' => $responseMessage, 'start_time' => $_POST['start_time']]);
 
 // Close the database connection
 $pdo = null;

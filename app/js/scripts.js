@@ -37,8 +37,10 @@ function removeFile(index) {
 
 function submitForm(event) {
 	event.preventDefault();
+	const startTime = Date.now(); // Record the start time
 	const formData = new FormData();
 	selectedFiles.forEach((file) => formData.append("csv_files[]", file));
+	formData.append("start_time", startTime); // Include the start time in the form data
 	document.getElementById("loading-screen").style.display = "flex"; // Loading screen starts here
 	fetch("upload.php", {
 		method: "POST",
@@ -47,7 +49,13 @@ function submitForm(event) {
 		.then((response) => response.json()) // Parse the JSON response from the server
 		.then((data) => {
 			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on success
-			alert(data.message); // Display the response message in a popup
+			const endTime = Date.now(); // Record the end time
+			const elapsedTime = (endTime - data.start_time) / 1000; // Calculate the elapsed time in seconds
+			alert(
+				`${data.message}\nElapsed time: ${elapsedTime.toFixed(
+					2
+				)} seconds`
+			); // Display the response message and elapsed time in a popup
 			if (
 				data.message.includes(
 					"Files uploaded and processed successfully!"
