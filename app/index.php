@@ -16,7 +16,7 @@
         </div>
     </div>
 
-    <!-- For for uploading the CSV files -->
+    <!-- Form for uploading the CSV files -->
     <form action="upload.php" method="post" enctype="multipart/form-data" onsubmit="submitForm(event)">
         <h1>ETL Pipeline</h1>
         <label class="custom-file-upload" onclick="document.getElementById('file-input').click();">
