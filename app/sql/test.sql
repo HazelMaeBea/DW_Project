@@ -23,7 +23,11 @@
     SELECT * FROM time_dimension ORDER BY time_level DESC;
     SELECT * FROM location_dimension ORDER BY level DESC;
     SELECT * FROM final_fact;
-    SELECT * FROM data_cube;
+    SELECT * FROM products;
+    SELECT * FROM locations;
+    SELECT * FROM time;
+    SELECT * FROM sales;
+    SELECT * FROM sales_data_cube;
     SELECT * FROM sliced_cube;
 
 -- Call the procedures
@@ -41,7 +45,7 @@
     CALL create_location_dimension();
     CALL populate_location_dimension();
     CALL create_final_fact_table();
-    CALL create_data_cube();
+    CALL create_sales_data_cube();
     CALL delete_permanent_records();
 
     CREATE OR REPLACE PROCEDURE delete_permanent_records()
