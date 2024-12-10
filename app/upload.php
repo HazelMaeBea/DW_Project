@@ -24,6 +24,8 @@ try {
     } else {
         $responseMessage = "Database connection failed.";
     }
+    // Log the response message
+    error_log($responseMessage . "\n", 3, __DIR__ . '/message.log');
 } catch (PDOException $e) {
     error_log("Database connection error: " . $e->getMessage() . "\n\n", 3, __DIR__ . '/error.log');
     die(json_encode(['message' => "Could not connect to the database: " . $e->getMessage()]));
@@ -62,18 +64,12 @@ if (!empty($_FILES['csv_files']['name'][0])) {
         // Fetch notifications from log_channel
         $notifications = [];
         while ($notification = $pdo->pgsqlGetNotify(PDO::FETCH_ASSOC, 1000)) {
-            $notifications[] = $notification['message'];
+            $notifications[] = $notification['payload'];
         }
 
         // Log all notifications at once
         foreach ($notifications as $message) {
-            $logData = json_encode(['message' => $message]);
-            $ch = curl_init('log_message.php');
-            curl_setopt($ch, CURLOPT_POST, 1);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_exec($ch);
-            curl_close($ch);
+            error_log($message . "\n", 3, __DIR__ . '/message.log');
         }
 
         // Check if data is loaded onto cleaned_normalized table
@@ -90,13 +86,8 @@ if (!empty($_FILES['csv_files']['name'][0])) {
         $elapsedTime = $endTime - $startTime;
 
         // Log the success message with elapsed time
-        $logData = json_encode(['message' => $responseMessage . "\nElapsed time: " . gmdate("H\h i\m s\s", $elapsedTime)]);
-        $ch = curl_init('log_message.php');
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_exec($ch);
-        curl_close($ch);
+        $finalMessage = $responseMessage . "\nElapsed time: " . gmdate("H\h i\m s\s", $elapsedTime);
+        error_log($finalMessage . "\n", 3, __DIR__ . '/message.log');
 
     } catch (PDOException $e) {
         error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
@@ -104,14 +95,12 @@ if (!empty($_FILES['csv_files']['name'][0])) {
     }
 } else {
     $responseMessage = "No files uploaded or paths are empty.";
+    // Log the response message
+    error_log($responseMessage . "\n", 3, __DIR__ . '/message.log');
 }
 
-// Calculate the elapsed time
-$endTime = microtime(true);
-$elapsedTime = $endTime - $startTime;
-
 // Send response message as JSON
-$response = ['message' => $responseMessage . "\nElapsed time: " . gmdate("H\h i\m s\s", $elapsedTime)];
+$response = ['message' => $finalMessage];
 if (isset($_POST['start_time'])) {
     $response['start_time'] = $_POST['start_time'];
 }

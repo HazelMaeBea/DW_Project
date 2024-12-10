@@ -49,7 +49,9 @@ function submitForm(event) {
 		.then((response) => response.json()) // Parse the JSON response from the server
 		.then((data) => {
 			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on success
-			alert(`${data.message}`); // Display the response message and elapsed time in a popup
+			const elapsedTime = Date.now() / 1000 - startTime; // Calculate elapsed time
+			const formattedElapsedTime = formatElapsedTime(elapsedTime); // Format elapsed time
+			alert(`${data.message}\nElapsed time: ${formattedElapsedTime}`); // Display the response message with elapsed time in a popup
 			// Log the success message to message.log
 			fetch("log_message.php", {
 				method: "POST",
