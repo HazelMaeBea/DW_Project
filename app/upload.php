@@ -24,8 +24,20 @@ try {
     } else {
         $responseMessage = "Database connection failed.";
     }
-    // Log the response message
-    error_log($responseMessage . "\n", 3, __DIR__ . '/message.log');
+    // Ensure outcome.log exists
+    $outcomeLog = __DIR__ . '/outcome.log';
+    if (!file_exists($outcomeLog)) {
+        file_put_contents($outcomeLog, '');
+    }
+
+    // Ensure message.log exists
+    $messageLog = __DIR__ . '/message.log';
+    if (!file_exists($messageLog)) {
+        file_put_contents($messageLog, '');
+    }
+
+    // Log the response message to message.log
+    error_log($responseMessage . "\n", 3, $messageLog);
 } catch (PDOException $e) {
     error_log("Database connection error: " . $e->getMessage() . "\n\n", 3, __DIR__ . '/error.log');
     die(json_encode(['message' => "Could not connect to the database: " . $e->getMessage()]));
@@ -69,8 +81,12 @@ if (!empty($_FILES['csv_files']['name'][0])) {
 
         // Log all notifications at once
         foreach ($notifications as $message) {
-            error_log($message . "\n", 3, __DIR__ . '/message.log');
+            error_log($message . "\n", 3, $messageLog);
         }
+        error_log("\n", 3, $outcomeLog);
+
+        // Log the uploaded file names
+        $uploadedFilesMessage = "Uploaded files: " . implode(', ', array_map('basename', $filePaths));
 
         // Check if data is loaded onto cleaned_normalized table
         $stmt = $pdo->query("SELECT COUNT(*) FROM sales_data_cube");
@@ -81,26 +97,34 @@ if (!empty($_FILES['csv_files']['name'][0])) {
             $responseMessage = "Files uploaded and processed successfully!\nData not loaded onto sales_data_cube table.";
         }
 
-        // Calculate the elapsed time
-        $endTime = microtime(true);
-        $elapsedTime = $endTime - $startTime;
+        // Include uploaded files in the response message
+        $responseMessage .= "\n" . $uploadedFilesMessage;
 
-        // Log the success message with elapsed time
-        $finalMessage = $responseMessage . "\nElapsed time: " . gmdate("H\h i\m s\s", $elapsedTime);
-        error_log($finalMessage . "\n", 3, __DIR__ . '/message.log');
+        // Calculate the processing time
+        $endTime = microtime(true);
+        $processingTime = $endTime - $startTime;
+        $formattedProcessingTime = sprintf('%02dh %02dm %02ds %03dms', ($processingTime / 3600), ($processingTime / 60 % 60), $processingTime % 60, ($processingTime * 1000) % 1000);
+
+        // Log the success message with processing time
+        $finalMessage = $responseMessage . "\nProcessing Time: " . $formattedProcessingTime;
+        error_log($finalMessage . "\n", 3, $outcomeLog);
+
+        // Include the formatted processing time in the response
+        $response = ['message' => $finalMessage];
 
     } catch (PDOException $e) {
         error_log("Error executing stored procedure: " . $e->getMessage(), 3, __DIR__ . '/error.log');
         $responseMessage = "Error executing stored procedure: " . $e->getMessage();
+        $response = ['message' => $responseMessage];
     }
 } else {
     $responseMessage = "No files uploaded or paths are empty.";
     // Log the response message
-    error_log($responseMessage . "\n", 3, __DIR__ . '/message.log');
+    error_log($responseMessage . "\n", 3, $outcomeLog);
+    $response = ['message' => $responseMessage];
 }
 
 // Send response message as JSON
-$response = ['message' => $finalMessage];
 if (isset($_POST['start_time'])) {
     $response['start_time'] = $_POST['start_time'];
 }

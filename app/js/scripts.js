@@ -49,16 +49,16 @@ function submitForm(event) {
 		.then((response) => response.json()) // Parse the JSON response from the server
 		.then((data) => {
 			document.getElementById("loading-screen").style.display = "none"; // Loading screen ends here on success
-			const elapsedTime = Date.now() / 1000 - startTime; // Calculate elapsed time
-			const formattedElapsedTime = formatElapsedTime(elapsedTime); // Format elapsed time
-			alert(`${data.message}\nElapsed time: ${formattedElapsedTime}`); // Display the response message with elapsed time in a popup
-			// Log the success message to message.log
+			alert(data.message); // Display the response message in a popup
+			// Log the success message to outcome.log
 			fetch("log_message.php", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ message: data.message }),
+				body: JSON.stringify({
+					message: data.message,
+				}), // Include processing time in the log message
 			});
 		})
 		.catch((error) => {
@@ -66,11 +66,4 @@ function submitForm(event) {
 			console.error("Error:", error);
 			alert(`Error occurred.`); // Display the error message in a popup
 		});
-}
-
-function formatElapsedTime(seconds) {
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const secs = Math.floor(seconds % 60);
-	return `${hours}h ${minutes}m ${secs}s`;
 }

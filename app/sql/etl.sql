@@ -150,7 +150,7 @@ BEGIN
         quantity_ordered INT,
         total_sales NUMERIC
     );
-    PERFORM log_message('All tables initially created');
+    PERFORM log_message('All tables needed for the ETL process created');
 END;
 $$;
 
@@ -173,7 +173,7 @@ BEGIN
     DELETE FROM sales_data_cube;
     DELETE FROM sliced_cube;
 
-    PERFORM log_message('All tables cleared.');
+    PERFORM log_message('Cleared all table contents');
 END;
 $$;
 
@@ -182,6 +182,8 @@ CREATE OR REPLACE PROCEDURE call_all_procedures()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('[Starting ETL Process...]');
+
     CALL data_mapping();
     CALL data_cleansing();
     CALL normalize_data();
@@ -191,6 +193,8 @@ BEGIN
     CALL create_final_fact_table();
     CALL create_sales_data_cube();
     CALL move_and_append_data();
+
+    PERFORM log_message('[ETL Process Completed.]');
 END;
 $$;
 
@@ -199,6 +203,7 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     PERFORM pg_notify('log_channel', message);
+	RAISE NOTICE '%', message;
 END;
 $$;
 
@@ -211,7 +216,7 @@ AS $$
 DECLARE
     file_path TEXT;
 BEGIN
-    PERFORM log_message('Starting data extraction...');
+    PERFORM log_message('[Starting Data Extraction...]');
 
     -- Clear all relevant tables only on initial data extraction
     CALL clear_all_tables();
@@ -242,7 +247,7 @@ BEGIN
 
     CALL call_all_procedures();
 
-    PERFORM log_message('Data extraction completed.');
+    PERFORM log_message('[Data Extraction Completed.]');
 END;
 $$;
 
@@ -252,7 +257,7 @@ CREATE OR REPLACE PROCEDURE data_mapping()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    PERFORM log_message('Starting data mapping...');
+    PERFORM log_message('[Starting Data Mapping...]');
 
     INSERT INTO invalid
     SELECT * FROM landing_table
@@ -269,8 +274,8 @@ BEGIN
         OR LOWER(order_date) = 'order date'
         OR LOWER(purchase_address) = 'purchase address';
     
-    PERFORM log_message('Invalid records inserted onto Invalid table.');
-    PERFORM log_message('Starting Insert into cleaned table.');
+    PERFORM log_message('Data Mapping: invalid records are inserted onto [invalid] table.');
+    PERFORM log_message('Data Mapping: start process to insert into [cleaned] table.');
 
     INSERT INTO cleaned
     SELECT
@@ -298,7 +303,7 @@ BEGIN
 		  -- to catch duplicates
       );
 
-    PERFORM log_message('Cleaned records inserted.');
+    PERFORM log_message('Data Mapping: already clean records inserted into [cleaned].');
 
     -- Insert remaining values into for_cleaning table
     INSERT INTO for_cleaning
@@ -322,7 +327,8 @@ BEGIN
     AND LOWER(order_date) != 'order date'
     AND LOWER(purchase_address) != 'purchase address';
 
-    PERFORM log_message('Remaining records inserted into for_cleaning.');
+    PERFORM log_message('Data Mapping: remaining records inserted into [for_cleaning] table.');
+    PERFORM log_message('[Data Mapping Completed.]');
 END;
 $$;
 
@@ -332,14 +338,14 @@ CREATE OR REPLACE PROCEDURE data_cleansing()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    PERFORM log_message('Starting data cleansing...');
+    PERFORM log_message('[Starting Data Cleansing...]');
 
     -- Fix to 2 decimal points
     UPDATE for_cleaning
     SET price_each = TO_CHAR(ROUND(CAST(price_each AS NUMERIC), 2), 'FM999999999.00')
     WHERE price_each ~ '^[0-9]+(\.[0-9]{1,2})?$';
 
-    PERFORM log_message('Price each fixed to 2 decimal points.');
+    PERFORM log_message('Data Cleansing: price each fixed to 2 decimal points for the [price_each] column.');
 
     -- Insert into CLEANED table one instance of complete duplicate
     INSERT INTO cleaned
@@ -362,7 +368,7 @@ BEGIN
         ORDER BY order_id, product
     );
 
-    PERFORM log_message('One (1) Copy Complete duplicates inserted into cleaned.');
+    PERFORM log_message('Data Cleansing: one (1) copy complete duplicates inserted into [cleaned].');
 
     -- Insert into INVALID table other instance of complete duplicate
     INSERT INTO invalid
@@ -385,7 +391,7 @@ BEGIN
         ORDER BY order_id, product
     );
 
-    PERFORM log_message('Other Complete duplicates inserted into invalid.');
+    PERFORM log_message('Data Cleansing: other Complete duplicates inserted into [invalid].');
 
     -- Delete records from FOR_CLEANING after insertion to cleaned and invalid
     DELETE FROM for_cleaning
@@ -413,7 +419,7 @@ BEGIN
       )
     );
 
-    PERFORM log_message('Complete Duplicates deleted from for_cleaning.');
+    PERFORM log_message('Data Cleansing: complete duplicates removed from [for_cleaning] table.');
 
     -- Insert non-duplicate records from the for processing
     INSERT INTO cleaned
@@ -434,7 +440,7 @@ BEGIN
         )
     );
 
-    PERFORM log_message('Non-duplicate records inserted into cleaned.');
+    PERFORM log_message('Data Cleansing: non-duplicate records inserted into [cleaned] table.');
 
     -- Delete non-duplicate records from the for processing
     DELETE FROM for_cleaning
@@ -447,7 +453,7 @@ BEGIN
         )    
     );
 
-    PERFORM log_message('Non-duplicate records deleted from for_cleaning.');
+    PERFORM log_message('Data Cleansing: Non-duplicate records revmoved from [for_cleaning] table.');
 
     -- Handle duplicate IDs with different products or quantities
     WITH row_numbers AS (
@@ -466,7 +472,7 @@ BEGIN
     FROM row_numbers
     WHERE for_cleaning.ctid = row_numbers.ctid;
 
-    PERFORM log_message('Duplicate IDs with different products or quantities handled.');
+    PERFORM log_message('Data Cleansing: duplicate IDs with different products or quantities handled.');
 
     -- Insert the updated records into the cleaned table
     INSERT INTO cleaned
@@ -479,7 +485,7 @@ BEGIN
         purchase_address
     FROM for_cleaning;
 
-    PERFORM log_message('Updated records inserted into cleaned.');
+    PERFORM log_message('Data Cleansing: updated records inserted into [cleaned] table.');
 
     -- Trim data in the cleaned table
     UPDATE cleaned
@@ -487,12 +493,12 @@ BEGIN
         product = TRIM(BOTH FROM product),
         purchase_address = TRIM(BOTH FROM purchase_address);
 
-    PERFORM log_message('Data trimmed in cleaned table.');
+    PERFORM log_message('Data Cleansing: data trimmed in [cleaned] table.');
 
     -- Clean up
     TRUNCATE for_cleaning;
 
-    PERFORM log_message('Data cleansing completed.');
+    PERFORM log_message('[Data Cleansing Completed.]');
 END;
 $$;
 
@@ -502,7 +508,7 @@ CREATE OR REPLACE PROCEDURE normalize_data()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    PERFORM log_message('Starting data normalization...');
+    PERFORM log_message('[Starting Data Normalization...]');
 
     -- Insert data into cleaned_normalized
     INSERT INTO cleaned_normalized 
@@ -524,14 +530,8 @@ BEGIN
         SPLIT_PART(SPLIT_PART(purchase_address, ',', 3), ' ', 3) AS zip_code
     FROM cleaned;
 
-    PERFORM log_message('Data inserted into cleaned_normalized.');
-
-    -- Truncate the cleaned table
-    TRUNCATE TABLE cleaned;
-
-    PERFORM log_message('cleaned table cleared.');
-
-    PERFORM log_message('Data normalization completed.');
+    PERFORM log_message('Data Normalization: data inserted into cleaned_normalized.');
+    PERFORM log_message('[Data Normalization Completed.]');
 END;
 $$;
 
@@ -546,6 +546,8 @@ DECLARE
 	next_pk_id INTEGER := 1;
 	next_pid_id INTEGER := 1;
 BEGIN
+    PERFORM log_message('[Starting Data Dersioning for [product_dimension] table...]');
+
     TRUNCATE TABLE product_dimension;
 
     FOR p_record IN
@@ -565,7 +567,7 @@ BEGIN
         THEN
             INSERT INTO product_dimension
             (
-		product_key,
+		        product_key,
                 product_id,
                 product_name,
                 price_each,
@@ -575,7 +577,7 @@ BEGIN
             )
             VALUES
             (
-		'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
+		        'PK_' || LPAD(next_pk_id::TEXT, 4, '0'),
                 'PID_' || LPAD(next_pid_id::TEXT, 4, '0'),
                 p_record.product,
                 p_record.price_each,
@@ -583,6 +585,8 @@ BEGIN
                 'Y',
                 'I'
             );
+           
+        PERFORM log_message('Data Versioning: Inserted new product: ' || p_record.product);
 
 		next_pk_id := next_pk_id + 1;
 		next_pid_id := next_pid_id + 1;
@@ -601,6 +605,9 @@ BEGIN
                 SET active_status = 'N'
                 WHERE product_name = p_record.product
                 AND active_status = 'Y';
+
+                PERFORM log_message('Data Versioning: updated product to inactive: ' || p_record.product);
+
 
                 INSERT INTO product_dimension
                 (
@@ -625,10 +632,14 @@ BEGIN
                 AND pd.active_status = 'N'
                 LIMIT 1;
 
+                PERFORM log_message('Data Versioning: inserted updated product: ' || p_record.product);
+
                 next_pk_id := next_pk_id + 1;
             END IF;
         END IF;
     END LOOP;
+
+    PERFORM log_message('[Data Versioning Completed.]');
 END;
 $$;
 
@@ -637,6 +648,7 @@ CREATE OR REPLACE PROCEDURE create_product_dimension()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('[Starting Product Dimension Creation...]');
     --Safety measure ko ito
     DROP TABLE IF EXISTS product;
 
@@ -653,6 +665,8 @@ BEGIN
 
     --handles the data versioning of the products
     CALL populate_product_dimension();
+
+    PERFORM log_message('[Product Dimension Created.]');
 END;
 $$;
 
@@ -662,17 +676,23 @@ RETURNS TRIGGER AS $$
 DECLARE
     next_id INTEGER;
 BEGIN
+    PERFORM log_message('Product price change detected for product: ' || OLD.product_name);
+
     IF (TG_OP = 'UPDATE') AND (OLD.active_status = 'Y') AND (OLD.price_each != NEW.price_each) THEN
         -- Get the next ID
         SELECT COALESCE(MAX(CAST(REPLACE(product_key, 'PK_', '') AS INTEGER)), 0) + 1 
         INTO next_id 
         FROM product_dimension;
 
+        PERFORM log_message('Next product key ID generated: PK_' || LPAD(next_id::TEXT, 4, '0'));
+
         -- First deactivate the old record
         UPDATE product_dimension 
         SET active_status = 'N'
         WHERE product_key = OLD.product_key
         AND active_status = 'Y';
+
+        PERFORM log_message('Deactivated old product record: ' || OLD.product_key);
 
         -- Then insert new record
         INSERT INTO product_dimension 
@@ -694,11 +714,14 @@ BEGIN
             'Y',
             'U'
         );
-        
+
+        PERFORM log_message('Inserted new product record: PK_' || LPAD(next_id::TEXT, 4, '0'));
+
         RETURN NULL;  -- This prevents the original UPDATE from happening
     END IF;
     
     RETURN NEW;
+    PERFORM log_message('Product price change handled for product: ' || OLD.product_name);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -720,18 +743,22 @@ RETURNS VOID
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('Attempting to change price for product: ' || p_product_name);
+
     IF NOT EXISTS (
         SELECT 1
         FROM product_dimension
         WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
         AND active_status = 'Y'
-    ) THEN
+    ) THEN 
+        PERFORM log_message('Product not found: ' || p_product_name);
         RAISE EXCEPTION 'Product % not found!', p_product_name;
     ELSE
         UPDATE product_dimension
         SET price_each = p_price_each
         WHERE LOWER(product_name) = LOWER(TRIM(p_product_name))
         AND active_status = 'Y';
+        PERFORM log_message('Price updated for product: ' || p_product_name || ' to ' || p_price_each);
     END IF;
 END;
 $$;
@@ -748,12 +775,15 @@ DECLARE
     next_pk_id INTEGER;
     next_pid_id INTEGER;
 BEGIN
+        PERFORM log_message('Attempting to insert new product: ' || p_product_name);
+
     IF EXISTS (
         SELECT 1
         FROM product_dimension
         WHERE LOWER(product_name) =LOWER(TRIM(p_product_name))
         AND active_status = 'Y'
     ) THEN
+        PERFORM log_message('Product already exists: ' || p_product_name);
         RAISE EXCEPTION 'Product % already exists!', p_product_name;
     ELSE
         -- Get the next IDs
@@ -761,9 +791,13 @@ BEGIN
         INTO next_pk_id 
         FROM product_dimension;
         
+        PERFORM log_message('Next product key ID generated: PK_' || LPAD(next_pk_id::TEXT, 4, '0'));
+
         SELECT COALESCE(MAX(CAST(REPLACE(product_id, 'PID_', '') AS INTEGER)), 0) + 1 
         INTO next_pid_id 
         FROM product_dimension;
+
+        PERFORM log_message('Next product ID generated: PID_' || LPAD(next_pid_id::TEXT, 4, '0'));
 
         -- Insert new product
         INSERT INTO product_dimension (
@@ -783,6 +817,8 @@ BEGIN
             'Y',
             'I'
         );
+
+    PERFORM log_message('Inserted new product: ' || p_product_name || ' with product key: PK_' || LPAD(next_pk_id::TEXT, 4, '0') || ' and product ID: PID_' || LPAD(next_pid_id::TEXT, 4, '0'));
     END IF;
 END;
 $$;
@@ -817,6 +853,8 @@ BEGIN
 	INSERT INTO time_dimension(time_id, time_desc, time_level, parent_id) 
 		SELECT DISTINCT('D'||year||halfyear||quarter||month||day) AS time_id, year||', half '||halfyear||', quarter '||quarter||', month '||month||', day '||day, 0, ('MO'||year||halfyear||quarter||month)
 			FROM cleaned_normalized ORDER BY time_id;
+
+    PERFORM log_message('Time Dimension populated.');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -824,8 +862,12 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE create_time_dimension()
 AS $$
 BEGIN
+    PERFORM log_message('[Starting Time Dimension Creation...]');
+
     DELETE FROM time_dimension;
     CALL populate_time_dimension();
+
+    PERFORM log_message('[Time Dimension Created.]');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -905,6 +947,7 @@ BEGIN
 	ON cn.state = street_rank.state AND cn.city = street_rank.city AND cn.street = street_rank.street
 	ORDER BY cn.state, cn.city, cn.street;
 
+    PERFORM log_message('Location Dimension populated.');
 END;
 $$;
 
@@ -913,8 +956,12 @@ CREATE OR REPLACE PROCEDURE create_location_dimension()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('[Starting Location Dimension Creation...]');
+
 	DELETE FROM location_dimension;
 	CALL populate_location_dimension();
+
+    PERFORM log_message('[Location Dimension Created.]');
 END;
 $$;
 
@@ -925,6 +972,8 @@ CREATE OR REPLACE PROCEDURE create_final_fact_table()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('[Starting Final Fact Table Creation...]');
+
     -- Drop the final_fact table if it exists
     DROP TABLE IF EXISTS final_fact;
 
@@ -962,7 +1011,7 @@ BEGIN
             cn.street || ', ' || cn.city || ', ' || cn.state || ' ' || cn.zip_code
         ));
 
-    PERFORM log_message('final_fact table created and populated.');
+    PERFORM log_message('[Final Fact Table created and populated.]');
 END;
 $$;
 
@@ -973,6 +1022,7 @@ CREATE OR REPLACE PROCEDURE create_sales_data_cube()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('[Creating [sales_data_cube] table...]');
     -- Drop the sales_data_cube table if it exists
     DELETE FROM sales_data_cube;
 
@@ -990,7 +1040,7 @@ BEGIN
         time_id NULLS FIRST,
         location_id NULLS FIRST;
 
-    PERFORM log_message('sales_data_cube table created and populated.');
+    PERFORM log_message('[sales_data_cube] table created.');
 END;
 $$;
 
@@ -998,6 +1048,7 @@ CREATE OR REPLACE PROCEDURE move_and_append_data()
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    PERFORM log_message('[Moving and Appending Data...]');
     -- Move data from product_dimension to products
     INSERT INTO products (product_key, product_id, product_name, price_each, last_update_date, active_status, action_flag)
     SELECT DISTINCT ON (product_key)
@@ -1034,7 +1085,7 @@ BEGIN
     -- Call the procedure to rebuild the sales_data_cube
     CALL create_sales_data_cube();
 
-    PERFORM log_message('Data moved and appended, sales_data_cube rebuilt.');
+    PERFORM log_message('[Data Moved and Appended, [sales_data_cube] rebuilt.]');
 END;
 $$;
 
