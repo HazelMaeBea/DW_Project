@@ -237,25 +237,6 @@ BEGIN
 END;
 $$;
 
--- CREATE OR REPLACE FUNCTION trigger_etl_on_insert()
--- RETURNS TRIGGER
--- LANGUAGE plpgsql
--- AS $$
--- BEGIN
---     -- Check if the session variable is set to disable the trigger
---     IF current_setting('myapp.etl_trigger_enabled', true) IS DISTINCT FROM 'false' THEN
---         CALL call_all_etl_procedures();
---     END IF;
---     RETURN NEW;
--- END;
--- $$;
-
--- DROP TRIGGER IF EXISTS trg_etl_on_insert ON landing_table;
--- -- CREATE TRIGGER trg_etl_on_insert
--- -- AFTER INSERT ON landing_table
--- -- FOR EACH ROW
--- -- EXECUTE FUNCTION trigger_etl_on_insert();
-
 ----------------------------------------------------------------------------------------------------------------------
 -- Stored procedure for data mapping
 CREATE OR REPLACE PROCEDURE data_mapping()
