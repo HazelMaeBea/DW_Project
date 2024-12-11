@@ -20,7 +20,7 @@ try {
     // Test query to check connection
     $stmt = $pdo->query("SELECT 1");
     if ($stmt) {
-        $responseMessage = "Database connection successful.";
+        $responseMessage = "\nDatabase connection successful.";
     } else {
         $responseMessage = "Database connection failed.";
     }
@@ -118,7 +118,7 @@ if (!empty($_FILES['csv_files']['name'][0])) {
         $response = ['message' => $responseMessage];
     }
 } else {
-    $responseMessage = "No files uploaded or paths are empty.";
+    $responseMessage = "\nNo files uploaded or paths are empty.";
     // Log the response message
     error_log($responseMessage . "\n", 3, $outcomeLog);
     $response = ['message' => $responseMessage];
