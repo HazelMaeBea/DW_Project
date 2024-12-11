@@ -108,21 +108,21 @@ BEGIN
 
     CREATE TABLE IF NOT EXISTS sliced_cube
     (
-            product_id varchar,
-            time_id varchar,
-            location_id varchar,
-            total_sales_sum numeric
+        product_id varchar,
+        time_id varchar,
+        location_id varchar,
+        total_sales_sum numeric
     );
 
     CREATE TABLE IF NOT EXISTS products 
     (
-    product_key VARCHAR(10) PRIMARY KEY,
-    product_id VARCHAR(10),
-    product_name VARCHAR(100),
-    price_each DECIMAL(10, 2),
-    last_update_date TIMESTAMP,
-    active_status CHAR(1),
-    action_flag CHAR(1)
+        product_key VARCHAR(10) PRIMARY KEY,
+        product_id VARCHAR(10),
+        product_name VARCHAR(100),
+        price_each DECIMAL(10, 2),
+        last_update_date TIMESTAMP,
+        active_status CHAR(1),
+        action_flag CHAR(1)
     );
 
     CREATE TABLE IF NOT EXISTS locations 
@@ -223,26 +223,12 @@ BEGIN
 
     -- Split the file paths into an array
     FOR file_path IN SELECT unnest(string_to_array(file_paths, ',')) LOOP
-        -- Create a temporary table to hold the CSV data
-        CREATE TEMP TABLE temp_csv (
-            order_id VARCHAR(255),
-            product VARCHAR(255),
-            quantity_ordered VARCHAR(255),
-            price_each VARCHAR(255),
-            order_date VARCHAR(255),
-            purchase_address VARCHAR(255)
+        -- Copy data from the CSV file directly into the landing_table
+        EXECUTE format(
+            'COPY landing_table (order_id, product, quantity_ordered, price_each, order_date, purchase_address) 
+             FROM %L WITH CSV HEADER', 
+            file_path
         );
-
-        -- Copy data from the CSV file into the temporary table
-        EXECUTE format('COPY temp_csv FROM %L WITH CSV HEADER', file_path);
-
-        -- Insert data from the temporary table into the landing_table
-        INSERT INTO landing_table (order_id, product, quantity_ordered, price_each, order_date, purchase_address)
-        SELECT order_id, product, quantity_ordered, price_each, order_date, purchase_address
-        FROM temp_csv;
-
-        -- Drop the temporary table
-        DROP TABLE temp_csv;
     END LOOP;
 
     CALL call_all_procedures();
@@ -250,6 +236,25 @@ BEGIN
     PERFORM log_message('[Data Extraction Completed.]');
 END;
 $$;
+
+-- CREATE OR REPLACE FUNCTION trigger_etl_on_insert()
+-- RETURNS TRIGGER
+-- LANGUAGE plpgsql
+-- AS $$
+-- BEGIN
+--     -- Check if the session variable is set to disable the trigger
+--     IF current_setting('myapp.etl_trigger_enabled', true) IS DISTINCT FROM 'false' THEN
+--         CALL call_all_etl_procedures();
+--     END IF;
+--     RETURN NEW;
+-- END;
+-- $$;
+
+-- DROP TRIGGER IF EXISTS trg_etl_on_insert ON landing_table;
+-- -- CREATE TRIGGER trg_etl_on_insert
+-- -- AFTER INSERT ON landing_table
+-- -- FOR EACH ROW
+-- -- EXECUTE FUNCTION trigger_etl_on_insert();
 
 ----------------------------------------------------------------------------------------------------------------------
 -- Stored procedure for data mapping
@@ -1274,7 +1279,7 @@ BEGIN
     DELETE FROM sliced_cube;
 
     IF top_node_time IS NULL AND top_node_loc IS NULL THEN
-        INSERT INTO sliced_cube SELECT * FROM sales_sales_data_cube;
+        INSERT INTO sliced_cube SELECT * FROM sales_data_cube;
         
     ELSIF (top_node_time IS NOT NULL AND top_node_loc IS NULL) THEN
         CALL extract_grains_time(0, top_node_time);

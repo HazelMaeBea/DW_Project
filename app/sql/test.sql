@@ -22,10 +22,10 @@
     SELECT * FROM product_dimension;
     SELECT * FROM time_dimension ORDER BY time_level DESC;
     SELECT * FROM location_dimension ORDER BY level DESC;
-    SELECT * FROM final_fact;
+    SELECT * FROM final_fact ORDER BY order_id;
     SELECT * FROM products;
-    SELECT * FROM locations;
-    SELECT * FROM time;
+    SELECT * FROM locations ORDER BY level DESC;
+    SELECT * FROM time ORDER BY time_level, time_desc DESC;
     SELECT * FROM sales;
     SELECT * FROM sales_data_cube;
     SELECT * FROM sliced_cube;
@@ -92,85 +92,3 @@
     GROUP BY order_id, product, quantity_ordered, price_each, order_date, street, city, state, zip_code
     -- HAVING COUNT(*) > 1
     ORDER BY order_id, product;
-
--- Tables used for extraction
-    CREATE TABLE IF NOT EXISTS landing_table 
-    (
-        order_id VARCHAR(255),
-        product VARCHAR(255),
-        quantity_ordered VARCHAR(255),
-        price_each VARCHAR(255),
-        order_date VARCHAR(255),
-        purchase_address VARCHAR(255)
-    );
-
-    CREATE TABLE IF NOT EXISTS cleaned 
-    (
-        order_id INT,
-        product VARCHAR(255),
-        quantity_ordered INT,
-        price_each DECIMAL(10, 2),
-        order_date TIMESTAMP,
-        purchase_address VARCHAR(255)
-	);
-
-	CREATE TABLE IF NOT EXISTS for_cleaning 
-    (
-        order_id VARCHAR(255),
-        product VARCHAR(255),
-        quantity_ordered VARCHAR(255),
-        price_each VARCHAR(255),
-        order_date VARCHAR(255),
-        purchase_address VARCHAR(255)
-	);
-
-	CREATE TABLE IF NOT EXISTS invalid 
-    (
-        order_id VARCHAR(255),
-        product VARCHAR(255),
-        quantity_ordered VARCHAR(255),
-        price_each VARCHAR(255),
-        order_date VARCHAR(255),
-        purchase_address VARCHAR(255)
-	);
-
-	CREATE TABLE IF NOT EXISTS time_dimension 
-	(
-		time_id varchar,
-		time_desc varchar,
-		time_level int,
-		parent_id varchar
-	);
-
--- product_dimension table
-    CREATE TABLE IF NOT EXISTS product_dimension
-    (
-	    product_key VARCHAR(10),
-        product_id VARCHAR(10),
-        product_name VARCHAR(100),
-        price_each DECIMAL(10,2),
-        last_update_date TIMESTAMP,
-        active_status CHAR(1),
-        action_flag CHAR(1),
-        PRIMARY KEY(product_key)
-    );
-
--- location_dimension table
-	CREATE TABLE IF NOT EXISTS location_dimension 
-    (
-	    location_id VARCHAR(50) PRIMARY KEY, 
-	    location_name VARCHAR(255),          
-	    level INT,                           
-	    parent_id VARCHAR(50)               
-	);
-
--- final_fact table
-    CREATE TABLE IF NOT EXISTS final_fact 
-    (
-        order_id INT,
-        product_id VARCHAR,
-        location_id VARCHAR, 
-        time_id VARCHAR, 
-        quantity_ordered INT,
-        total_sales NUMERIC
-    );
